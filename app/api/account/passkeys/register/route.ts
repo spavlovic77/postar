@@ -4,7 +4,6 @@ import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server"
-import type { AuthenticatorTransportFuture } from "@simplewebauthn/types"
 
 const rpName = "Postar"
 const rpID = process.env.NEXT_PUBLIC_WEBAUTHN_RP_ID || "localhost"
@@ -97,7 +96,7 @@ export async function POST(request: Request) {
         counter: credential.counter,
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp,
-        transports: response.response.transports as AuthenticatorTransportFuture[],
+        transports: response.response.transports || [],
         name: name || "Passkey",
       })
 
