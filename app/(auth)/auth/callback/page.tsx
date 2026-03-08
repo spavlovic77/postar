@@ -46,9 +46,7 @@ export default function AuthCallbackPage() {
         return
       }
 
-      // Check if there's an invitation token
-      const invitationToken = searchParams.get("invitation_token")
-
+      // Check if there's an invitation token (already retrieved above)
       if (invitationToken) {
         const res = await fetch(`/api/invitations/accept/${invitationToken}`)
 
