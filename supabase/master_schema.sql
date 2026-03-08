@@ -7,7 +7,7 @@
 -- ============================================================
 -- 1. DROP ALL TABLES (reverse dependency order)
 -- ============================================================
-DROP FUNCTION IF EXISTS public.is_super_admin();
+DROP FUNCTION IF EXISTS public.is_super_admin() CASCADE;
 DROP TABLE IF EXISTS "auditLogs" CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS "companyAssignments" CASCADE;
