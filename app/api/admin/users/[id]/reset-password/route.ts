@@ -60,7 +60,7 @@ export async function POST(
     email,
     options: {
       shouldCreateUser: false,
-      emailRedirectTo: `${request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"}/auth/callback`,
     },
   })
 

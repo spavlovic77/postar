@@ -136,8 +136,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: invError.message }, { status: 500 })
   }
 
-  // Send magic link via Supabase Auth
-  const redirectUrl = `${request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL}/auth/callback?invitation_token=${token}`
+  // Send magic link via Supabase Auth - prioritize env var for production
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"
+  const redirectUrl = `${baseUrl}/auth/callback?invitation_token=${token}`
 
   const { error: otpError } = await supabase.auth.signInWithOtp({
     email: result.data.email,
