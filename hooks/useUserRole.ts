@@ -15,7 +15,6 @@ export function useUserRole() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      console.log("[v0] useUserRole - user:", user?.id, user?.email)
       if (user) {
         const { data, error } = await supabase
           .from("userRoles")
@@ -23,18 +22,13 @@ export function useUserRole() {
           .eq("userId", user.id)
           .single()
 
-        console.log("[v0] useUserRole - query result:", { data, error })
-
         if (error) {
           console.error("useUserRole error:", error.message, "userId:", user.id)
         }
 
         if (data) {
-          console.log("[v0] useUserRole - setting role to:", data.role)
           setRole(data.role as UserRole)
         }
-      } else {
-        console.log("[v0] useUserRole - no user found")
       }
       setIsLoading(false)
     }
