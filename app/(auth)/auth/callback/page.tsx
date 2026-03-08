@@ -16,21 +16,29 @@ export default function AuthCallbackPage() {
 
       // Check for code parameter (from magic link email)
       const code = searchParams.get("code")
+      const invitationToken = searchParams.get("invitation_token")
+      
+      console.log("[v0] Auth callback - code:", code ? "present" : "missing", "invitation_token:", invitationToken ? "present" : "missing")
       
       if (code) {
         // Exchange the code for a session
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        console.log("[v0] Exchanging code for session...")
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        
+        console.log("[v0] Exchange result:", { data: data ? "success" : "null", error: exchangeError?.message })
         
         if (exchangeError) {
-          console.error("Exchange code error:", exchangeError)
+          console.error("[v0] Exchange code error:", exchangeError)
           setStatus("error")
-          setErrorMsg("Nepodarilo sa overiť odkaz. Odkaz mohol vypršať alebo už bol použitý.")
+          setErrorMsg(`Nepodarilo sa overiť odkaz: ${exchangeError.message}`)
           return
         }
       }
 
       // Get the session after exchange
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      console.log("[v0] Session check:", { hasSession: !!session, error: sessionError?.message })
 
       if (sessionError || !session) {
         setStatus("error")
@@ -38,9 +46,7 @@ export default function AuthCallbackPage() {
         return
       }
 
-      // Check if there's an invitation token
-      const invitationToken = searchParams.get("invitation_token")
-
+      // Check if there's an invitation token (already retrieved above)
       if (invitationToken) {
         const res = await fetch(`/api/invitations/accept/${invitationToken}`)
 
