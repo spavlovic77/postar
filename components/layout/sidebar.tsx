@@ -67,9 +67,11 @@ function getNavForRole(role: UserRole | null): NavItem[] {
 }
 
 export function Sidebar() {
+  console.log("[v0] Sidebar component rendering")
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { role } = useUserRole()
+  console.log("[v0] Sidebar - role from hook:", role)
   const navigation = getNavForRole(role)
 
   return (
