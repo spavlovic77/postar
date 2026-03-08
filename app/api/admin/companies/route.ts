@@ -10,6 +10,8 @@ async function requireSuperAdmin() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  console.log("[v0] requireSuperAdmin - user:", user?.id, user?.email)
+
   if (!user) return { error: "Unauthorized", status: 401 }
 
   const { data: userRole, error: roleError } = await supabase
@@ -17,6 +19,8 @@ async function requireSuperAdmin() {
     .select("role")
     .eq("userId", user.id)
     .single()
+
+  console.log("[v0] requireSuperAdmin - userRole query result:", { userRole, roleError })
 
   if (roleError) {
     console.error("requireSuperAdmin roleError:", roleError.message, "userId:", user.id)
