@@ -47,22 +47,29 @@ export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
   const userAgent = request.headers.get("user-agent") ?? ""
 
-  const supabase = await createClient()
-  const adminClient = createAdminClient()
+  try {
+    console.log("[v0] POST /api/invitations - starting")
+    
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+    console.log("[v0] User:", user?.id)
 
-  // Get actor's role
-  const actorRoleData = await getUserRole(adminClient, user.id)
-  if (!actorRoleData || !["superAdmin", "administrator"].includes(actorRoleData.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get actor's role
+    const actorRoleData = await getUserRole(adminClient, user.id)
+    console.log("[v0] Actor role data:", actorRoleData)
+    
+    if (!actorRoleData || !["superAdmin", "administrator"].includes(actorRoleData.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
 
   const body = await request.json()
   const result = inviteUserSchema.safeParse(body)
@@ -176,5 +183,10 @@ export async function POST(request: Request) {
     },
   })
 
+  console.log("[v0] Invitation created successfully:", invitation.id)
   return NextResponse.json({ data: invitation }, { status: 201 })
+  } catch (err) {
+    console.error("[v0] POST /api/invitations - unhandled error:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
 }
