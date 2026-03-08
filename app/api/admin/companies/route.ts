@@ -5,33 +5,49 @@ import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import crypto from "crypto"
 
 async function requireSuperAdmin() {
-  const supabase = await createClient()
-  const adminClient = createAdminClient()
+  console.log("[v0] requireSuperAdmin - starting")
   
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    console.log("[v0] requireSuperAdmin - supabase client created")
+    
+    const adminClient = createAdminClient()
+    console.log("[v0] requireSuperAdmin - admin client created")
+    
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
-  if (!user) return { error: "Unauthorized", status: 401 }
+    console.log("[v0] requireSuperAdmin - auth result:", { userId: user?.id, authError: authError?.message })
 
-  // Use admin client to check role (bypasses RLS)
-  const { data: userRole, error: roleError } = await adminClient
-    .from("userRoles")
-    .select("role")
-    .eq("userId", user.id)
-    .single()
+    if (!user) return { error: "Unauthorized", status: 401 }
 
-  if (roleError) {
-    console.error("requireSuperAdmin roleError:", roleError.message, "userId:", user.id)
-    return { error: roleError.message, status: 500 }
+    // Use admin client to check role (bypasses RLS)
+    const { data: userRole, error: roleError } = await adminClient
+      .from("userRoles")
+      .select("role")
+      .eq("userId", user.id)
+      .single()
+
+    console.log("[v0] requireSuperAdmin - role query:", { userRole, roleError: roleError?.message })
+
+    if (roleError) {
+      console.error("requireSuperAdmin roleError:", roleError.message, "userId:", user.id)
+      return { error: roleError.message, status: 500 }
+    }
+
+    if (!userRole || userRole.role !== "superAdmin") {
+      return { error: "Forbidden", status: 403 }
+    }
+
+    console.log("[v0] requireSuperAdmin - success, user is superAdmin")
+    // Return admin client for database operations
+    return { user, supabase: adminClient }
+  } catch (err) {
+    console.error("[v0] requireSuperAdmin - caught exception:", err)
+    return { error: "Internal server error", status: 500 }
   }
-
-  if (!userRole || userRole.role !== "superAdmin") {
-    return { error: "Forbidden", status: 403 }
-  }
-
-  // Return admin client for database operations
-  return { user, supabase: adminClient }
 }
 
 export async function GET() {
