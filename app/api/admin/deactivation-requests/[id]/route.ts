@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import crypto from "crypto"
 
@@ -9,6 +9,8 @@ export async function PUT(
 ) {
   const { id } = await params
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+  
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -17,7 +19,8 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: userRole } = await supabase
+  // Use admin client to check role (bypasses RLS)
+  const { data: userRole } = await adminClient
     .from("userRoles")
     .select("role")
     .eq("userId", user.id)
@@ -36,7 +39,7 @@ export async function PUT(
 
   const status = action === "approve" ? "approved" : "rejected"
 
-  const { data: reqData, error } = await supabase
+  const { data: reqData, error } = await adminClient
     .from("accountDeactivationRequests")
     .update({
       status,
@@ -53,7 +56,7 @@ export async function PUT(
 
   // If approved, deactivate the user
   if (action === "approve" && reqData) {
-    await supabase
+    await adminClient
       .from("userRoles")
       .update({ isActive: false })
       .eq("userId", reqData.userId)
