@@ -4,6 +4,7 @@ import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server"
+import type { AuthenticatorTransport } from "@simplewebauthn/server"
 
 const rpName = "Postar"
 const rpID = process.env.NEXT_PUBLIC_WEBAUTHN_RP_ID || "localhost"
@@ -34,8 +35,8 @@ export async function POST(request: Request) {
         .eq("userId", user.id)
 
       const excludeCredentials = (existingPasskeys || []).map((p) => ({
-        id: Buffer.from(p.credentialId, "base64url"),
-        type: "public-key" as const,
+        id: p.credentialId,
+        transports: [] as AuthenticatorTransport[],
       }))
 
       const options = await generateRegistrationOptions({
