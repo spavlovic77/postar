@@ -88,8 +88,8 @@ export async function POST(request: Request) {
         expectedOrigin: origin,
         expectedRPID: rpID,
         credential: {
-          id: Buffer.from(passkey.credentialId, "base64url"),
-          publicKey: Buffer.from(passkey.publicKey, "base64url"),
+          id: passkey.credentialId,
+          publicKey: passkey.publicKey,
           counter: passkey.counter,
         },
       })
