@@ -7,6 +7,7 @@
 -- ============================================================
 -- 1. DROP ALL TABLES (reverse dependency order)
 -- ============================================================
+DROP FUNCTION IF EXISTS public.is_super_admin();
 DROP TABLE IF EXISTS "auditLogs" CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS "companyAssignments" CASCADE;
@@ -156,18 +157,24 @@ ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "accountDeactivationRequests" ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- 5. RLS POLICIES
+-- 5. HELPER FUNCTION (bypasses RLS to check role without recursion)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public."userRoles"
+    WHERE "userId" = auth.uid() AND role = 'superAdmin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- ============================================================
+-- 6. RLS POLICIES
 -- ============================================================
 
 -- Access Point Providers: superAdmin full access
 CREATE POLICY "Super admin full access to APs"
   ON "accessPointProviders" FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
-  );
+  USING (public.is_super_admin());
 
 -- Companies: users see assigned, superAdmin sees all
 CREATE POLICY "Users can view assigned companies"
@@ -177,35 +184,24 @@ CREATE POLICY "Users can view assigned companies"
       SELECT 1 FROM "companyAssignments"
       WHERE "companyId" = companies.id AND "userId" = auth.uid()
     )
-    OR EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Admins can manage own companies"
   ON companies FOR ALL
   USING (
     "createdById" = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
+    OR public.is_super_admin()
   );
 
--- User Roles
+-- User Roles: users see own role, superAdmin manages all
 CREATE POLICY "Users can view own role"
   ON "userRoles" FOR SELECT
   USING ("userId" = auth.uid());
 
 CREATE POLICY "Super admin manages roles"
   ON "userRoles" FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM "userRoles" AS ur
-      WHERE ur."userId" = auth.uid() AND ur.role = 'superAdmin'
-    )
-  );
+  USING (public.is_super_admin());
 
 -- Company Assignments
 CREATE POLICY "Users can view own assignments"
@@ -220,10 +216,7 @@ CREATE POLICY "Admins manage company assignments"
       WHERE companies.id = "companyAssignments"."companyId"
       AND companies."createdById" = auth.uid()
     )
-    OR EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
+    OR public.is_super_admin()
   );
 
 -- Documents
@@ -234,10 +227,7 @@ CREATE POLICY "Users can view documents of assigned companies"
       SELECT 1 FROM "companyAssignments"
       WHERE "companyId" = documents."companyId" AND "userId" = auth.uid()
     )
-    OR EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Users can insert documents for assigned companies"
@@ -252,12 +242,7 @@ CREATE POLICY "Users can insert documents for assigned companies"
 -- Audit Logs
 CREATE POLICY "Super admin views audit logs"
   ON "auditLogs" FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
-  );
+  USING (public.is_super_admin());
 
 CREATE POLICY "Authenticated users can insert audit logs"
   ON "auditLogs" FOR INSERT
@@ -266,32 +251,19 @@ CREATE POLICY "Authenticated users can insert audit logs"
 -- Invitations
 CREATE POLICY "Super admin full access to invitations"
   ON invitations FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
-  );
+  USING (public.is_super_admin());
 
 CREATE POLICY "Admins can manage own invitations"
   ON invitations FOR ALL
   USING (
     "invitedBy" = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
+    OR public.is_super_admin()
   );
 
 -- Account Deactivation Requests
 CREATE POLICY "Super admin full access to deactivation requests"
   ON "accountDeactivationRequests" FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM "userRoles"
-      WHERE "userId" = auth.uid() AND role = 'superAdmin'
-    )
-  );
+  USING (public.is_super_admin());
 
 CREATE POLICY "Users can view own deactivation requests"
   ON "accountDeactivationRequests" FOR SELECT
