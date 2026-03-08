@@ -24,19 +24,43 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const { data, error } = await adminClient
+  // Get all user roles
+  const { data: roles, error: rolesError } = await adminClient
     .from("userRoles")
-    .select(`
-      *,
-      companyAssignments:companyAssignments(
-        company:companyId(id, name, dic)
-      )
-    `)
+    .select("*")
     .order("createdAt", { ascending: false })
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (rolesError) {
+    return NextResponse.json({ error: rolesError.message }, { status: 500 })
   }
+
+  // Get all company assignments with company details
+  const { data: assignments } = await adminClient
+    .from("companyAssignments")
+    .select("userId, companyId")
+
+  const { data: companies } = await adminClient
+    .from("companies")
+    .select("id, name, dic")
+
+  // Build a map of userId to companies
+  const companyMap = new Map(companies?.map(c => [c.id, c]) || [])
+  const userCompanies = new Map<string, Array<{ id: string; name: string; dic: string }>>()
+  
+  for (const assignment of assignments || []) {
+    const company = companyMap.get(assignment.companyId)
+    if (company) {
+      const existing = userCompanies.get(assignment.userId) || []
+      existing.push(company)
+      userCompanies.set(assignment.userId, existing)
+    }
+  }
+
+  // Combine roles with company assignments
+  const data = roles?.map(role => ({
+    ...role,
+    companies: userCompanies.get(role.userId) || []
+  }))
 
   return NextResponse.json({ data })
 }
