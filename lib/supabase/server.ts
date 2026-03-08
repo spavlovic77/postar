@@ -4,10 +4,16 @@ import { cookies } from "next/headers"
 
 // Admin client that bypasses RLS - use only in API routes after verifying user is superAdmin
 export function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  console.log("[v0] createAdminClient - URL exists:", !!url, "Key exists:", !!key)
+  
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL")
+  }
+  
+  return createSupabaseClient(url, key)
 }
 
 export async function createClient() {
