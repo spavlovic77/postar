@@ -14,7 +14,22 @@ export default function AuthCallbackPage() {
     async function handleCallback() {
       const supabase = createClient()
 
-      // Supabase handles the OTP verification via the URL hash automatically
+      // Check for code parameter (from magic link email)
+      const code = searchParams.get("code")
+      
+      if (code) {
+        // Exchange the code for a session
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        
+        if (exchangeError) {
+          console.error("Exchange code error:", exchangeError)
+          setStatus("error")
+          setErrorMsg("Nepodarilo sa overiť odkaz. Odkaz mohol vypršať alebo už bol použitý.")
+          return
+        }
+      }
+
+      // Get the session after exchange
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError || !session) {
