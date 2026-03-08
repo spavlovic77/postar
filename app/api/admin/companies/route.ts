@@ -5,21 +5,13 @@ import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import crypto from "crypto"
 
 async function requireSuperAdmin() {
-  console.log("[v0] requireSuperAdmin - starting")
-  
   try {
     const supabase = await createClient()
-    console.log("[v0] requireSuperAdmin - supabase client created")
-    
     const adminClient = createAdminClient()
-    console.log("[v0] requireSuperAdmin - admin client created")
     
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser()
-
-    console.log("[v0] requireSuperAdmin - auth result:", { userId: user?.id, authError: authError?.message })
 
     if (!user) return { error: "Unauthorized", status: 401 }
 
@@ -30,8 +22,6 @@ async function requireSuperAdmin() {
       .eq("userId", user.id)
       .single()
 
-    console.log("[v0] requireSuperAdmin - role query:", { userRole, roleError: roleError?.message })
-
     if (roleError) {
       console.error("requireSuperAdmin roleError:", roleError.message, "userId:", user.id)
       return { error: roleError.message, status: 500 }
@@ -41,31 +31,36 @@ async function requireSuperAdmin() {
       return { error: "Forbidden", status: 403 }
     }
 
-    console.log("[v0] requireSuperAdmin - success, user is superAdmin")
     // Return admin client for database operations
     return { user, supabase: adminClient }
   } catch (err) {
-    console.error("[v0] requireSuperAdmin - caught exception:", err)
+    console.error("requireSuperAdmin exception:", err)
     return { error: "Internal server error", status: 500 }
   }
 }
 
 export async function GET() {
-  const auth = await requireSuperAdmin()
-  if ("error" in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  try {
+    const auth = await requireSuperAdmin()
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    const { data, error } = await auth.supabase
+      .from("companies")
+      .select("*")
+      .order("createdAt", { ascending: false })
+
+    if (error) {
+      console.error("GET companies error:", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ data: data || [] })
+  } catch (err) {
+    console.error("GET companies exception:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-
-  const { data, error } = await auth.supabase
-    .from("companies")
-    .select("*")
-    .order("createdAt", { ascending: false })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ data })
 }
 
 export async function POST(request: Request) {

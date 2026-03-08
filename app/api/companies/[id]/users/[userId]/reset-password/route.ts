@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
-import { canManageUser, getUserRole } from "@/lib/auth/permissions"
+import { getUserRole, canRemoveFromCompany } from "@/lib/auth/permissions"
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
+/**
+ * POST /api/companies/[id]/users/[userId]/reset-password
+ * Reset password for a user in a company (sends magic link)
+ * Access: SuperAdmin (any), Administrator (their companies, accountants only)
+ */
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; userId: string }> }
 ) {
-  const { id: targetUserId } = await params
+  const { id: companyId, userId: targetUserId } = await params
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
@@ -33,14 +38,14 @@ export async function POST(
     return NextResponse.json({ error: "Target user not found" }, { status: 404 })
   }
 
-  // Check hierarchy permissions
-  const permission = await canManageUser(
+  // Check permissions (reuse canRemoveFromCompany logic for company-scoped actions)
+  const permission = await canRemoveFromCompany(
     adminClient,
     user.id,
     actorRoleData.role as UserRole,
     targetUserId,
     targetRoleData.role as UserRole,
-    "resetPassword"
+    companyId
   )
 
   if (!permission.allowed) {
@@ -78,15 +83,20 @@ export async function POST(
 
   await logAuditEvent({
     userId: user.id,
-    action: "user.reset-password",
+    companyId,
+    action: "company.user.reset-password",
     outcome: "success",
     sourceIp: ip,
     userAgent,
     requestMethod: "POST",
-    requestPath: `/api/admin/users/${targetUserId}/reset-password`,
+    requestPath: `/api/companies/${companyId}/users/${targetUserId}/reset-password`,
     responseStatus: 200,
     correlationId,
-    details: { targetUserId, targetRole: targetRoleData.role, actorRole: actorRoleData.role },
+    details: {
+      targetUserId,
+      targetRole: targetRoleData.role,
+      actorRole: actorRoleData.role,
+    },
   })
 
   return NextResponse.json({ message: "Password reset link sent" })

@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
-import { canManageUser, getUserRole } from "@/lib/auth/permissions"
+import { getUserRole, canRemoveFromCompany } from "@/lib/auth/permissions"
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
-export async function POST(
+/**
+ * DELETE /api/companies/[id]/users/[userId]
+ * Remove a user from a company
+ * Access: SuperAdmin (any), Administrator (their companies, accountants only)
+ */
+export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; userId: string }> }
 ) {
-  const { id: targetUserId } = await params
+  const { id: companyId, userId: targetUserId } = await params
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
@@ -33,42 +38,29 @@ export async function POST(
     return NextResponse.json({ error: "Target user not found" }, { status: 404 })
   }
 
-  // Check hierarchy permissions
-  const permission = await canManageUser(
+  // Check permissions
+  const permission = await canRemoveFromCompany(
     adminClient,
     user.id,
     actorRoleData.role as UserRole,
     targetUserId,
     targetRoleData.role as UserRole,
-    "resetPassword"
+    companyId
   )
 
   if (!permission.allowed) {
     return NextResponse.json({ error: permission.reason }, { status: 403 })
   }
 
-  // Get email from request body
-  const body = await request.json().catch(() => ({}))
-  const email = body.email
+  // Remove the user from the company
+  const { error } = await adminClient
+    .from("companyAssignments")
+    .delete()
+    .eq("userId", targetUserId)
+    .eq("companyId", companyId)
 
-  if (!email) {
-    return NextResponse.json({ error: "Email required" }, { status: 400 })
-  }
-
-  // Send password reset link via magic link
-  const { error: otpError } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"}/auth/callback`,
-    },
-  })
-
-  if (otpError) {
-    return NextResponse.json(
-      { error: "Failed to send reset link" },
-      { status: 500 }
-    )
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   // Audit log
@@ -78,16 +70,21 @@ export async function POST(
 
   await logAuditEvent({
     userId: user.id,
-    action: "user.reset-password",
+    companyId,
+    action: "company.user.remove",
     outcome: "success",
     sourceIp: ip,
     userAgent,
-    requestMethod: "POST",
-    requestPath: `/api/admin/users/${targetUserId}/reset-password`,
+    requestMethod: "DELETE",
+    requestPath: `/api/companies/${companyId}/users/${targetUserId}`,
     responseStatus: 200,
     correlationId,
-    details: { targetUserId, targetRole: targetRoleData.role, actorRole: actorRoleData.role },
+    details: {
+      targetUserId,
+      targetRole: targetRoleData.role,
+      actorRole: actorRoleData.role,
+    },
   })
 
-  return NextResponse.json({ message: "Password reset link sent" })
+  return NextResponse.json({ message: "User removed from company" })
 }

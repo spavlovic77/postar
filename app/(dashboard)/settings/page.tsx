@@ -14,6 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { PasskeySettings } from "@/components/settings/passkey-settings"
 
 export default function SettingsPage() {
   const [resetSent, setResetSent] = useState(false)
@@ -62,6 +63,9 @@ export default function SettingsPage() {
       </div>
 
       <div className="max-w-xl space-y-6">
+        {/* Passkey / MFA Settings */}
+        <PasskeySettings />
+
         {/* Password Reset */}
         <div className="rounded-lg border border-border bg-card p-6">
           <div className="flex items-center gap-3 mb-4">

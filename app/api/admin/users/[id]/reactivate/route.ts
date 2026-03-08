@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import { canManageUser, getUserRole } from "@/lib/auth/permissions"
+import type { UserRole } from "@/types"
 import crypto from "crypto"
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
+  const { id: targetUserId } = await params
   const supabase = await createClient()
   const adminClient = createAdminClient()
-  
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -19,26 +21,51 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Use admin client to check role (bypasses RLS)
-  const { data: userRole } = await adminClient
-    .from("userRoles")
-    .select("role")
-    .eq("userId", user.id)
-    .single()
-
-  if (!userRole || userRole.role !== "superAdmin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // Get actor's role
+  const actorRoleData = await getUserRole(adminClient, user.id)
+  if (!actorRoleData) {
+    return NextResponse.json({ error: "User role not found" }, { status: 403 })
   }
 
+  // Only SuperAdmin can reactivate users
+  if (actorRoleData.role !== "superAdmin") {
+    return NextResponse.json(
+      { error: "Only SuperAdmin can reactivate users" },
+      { status: 403 }
+    )
+  }
+
+  // Get target user's role
+  const targetRoleData = await getUserRole(adminClient, targetUserId)
+  if (!targetRoleData) {
+    return NextResponse.json({ error: "Target user not found" }, { status: 404 })
+  }
+
+  // Check hierarchy permissions
+  const permission = await canManageUser(
+    adminClient,
+    user.id,
+    actorRoleData.role as UserRole,
+    targetUserId,
+    targetRoleData.role as UserRole,
+    "reactivate"
+  )
+
+  if (!permission.allowed) {
+    return NextResponse.json({ error: permission.reason }, { status: 403 })
+  }
+
+  // Reactivate the user
   const { error } = await adminClient
     .from("userRoles")
     .update({ isActive: true })
-    .eq("userId", id)
+    .eq("userId", targetUserId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Audit log
   const correlationId = crypto.randomUUID()
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
   const userAgent = request.headers.get("user-agent") ?? ""
@@ -50,11 +77,11 @@ export async function PUT(
     sourceIp: ip,
     userAgent,
     requestMethod: "PUT",
-    requestPath: `/api/admin/users/${id}/reactivate`,
+    requestPath: `/api/admin/users/${targetUserId}/reactivate`,
     responseStatus: 200,
     correlationId,
-    details: { targetUserId: id },
+    details: { targetUserId, targetRole: targetRoleData.role },
   })
 
-  return NextResponse.json({ message: "User reactivated" })
+  return NextResponse.json({ message: "User reactivated successfully" })
 }
