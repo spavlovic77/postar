@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { companyUpdateSchema } from "@/lib/validations/document"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import crypto from "crypto"
 
 async function requireSuperAdmin() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+  
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) return { error: "Unauthorized", status: 401 }
 
-  const { data: userRole } = await supabase
+  // Use admin client to check role (bypasses RLS)
+  const { data: userRole } = await adminClient
     .from("userRoles")
     .select("role")
     .eq("userId", user.id)
@@ -22,7 +25,7 @@ async function requireSuperAdmin() {
     return { error: "Forbidden", status: 403 }
   }
 
-  return { user, supabase }
+  return { user, supabase: adminClient }
 }
 
 export async function GET(

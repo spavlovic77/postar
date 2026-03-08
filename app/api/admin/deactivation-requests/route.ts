@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 export async function GET() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+  
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -11,7 +13,8 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: userRole } = await supabase
+  // Use admin client to check role (bypasses RLS)
+  const { data: userRole } = await adminClient
     .from("userRoles")
     .select("role")
     .eq("userId", user.id)
@@ -21,7 +24,7 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await adminClient
     .from("accountDeactivationRequests")
     .select("*")
     .order("createdAt", { ascending: false })

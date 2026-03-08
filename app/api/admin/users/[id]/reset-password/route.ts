@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import crypto from "crypto"
 
@@ -9,6 +9,8 @@ export async function POST(
 ) {
   const { id } = await params
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+  
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -17,7 +19,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: userRole } = await supabase
+  // Use admin client to check role (bypasses RLS)
+  const { data: userRole } = await adminClient
     .from("userRoles")
     .select("role")
     .eq("userId", user.id)
@@ -28,7 +31,7 @@ export async function POST(
   }
 
   // Get the target user's email from userRoles join
-  const { data: targetRole } = await supabase
+  const { data: targetRole } = await adminClient
     .from("userRoles")
     .select("userId")
     .eq("userId", id)
