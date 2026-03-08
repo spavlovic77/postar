@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
-import { canManageUser, getUserRole } from "@/lib/auth/permissions"
+import { getUserRole, canRemoveFromCompany } from "@/lib/auth/permissions"
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
-export async function PUT(
+/**
+ * DELETE /api/companies/[id]/users/[userId]
+ * Remove a user from a company
+ * Access: SuperAdmin (any), Administrator (their companies, accountants only)
+ */
+export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; userId: string }> }
 ) {
-  const { id: targetUserId } = await params
+  const { id: companyId, userId: targetUserId } = await params
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
@@ -27,39 +32,32 @@ export async function PUT(
     return NextResponse.json({ error: "User role not found" }, { status: 403 })
   }
 
-  // Only SuperAdmin can reactivate users
-  if (actorRoleData.role !== "superAdmin") {
-    return NextResponse.json(
-      { error: "Only SuperAdmin can reactivate users" },
-      { status: 403 }
-    )
-  }
-
   // Get target user's role
   const targetRoleData = await getUserRole(adminClient, targetUserId)
   if (!targetRoleData) {
     return NextResponse.json({ error: "Target user not found" }, { status: 404 })
   }
 
-  // Check hierarchy permissions
-  const permission = await canManageUser(
+  // Check permissions
+  const permission = await canRemoveFromCompany(
     adminClient,
     user.id,
     actorRoleData.role as UserRole,
     targetUserId,
     targetRoleData.role as UserRole,
-    "reactivate"
+    companyId
   )
 
   if (!permission.allowed) {
     return NextResponse.json({ error: permission.reason }, { status: 403 })
   }
 
-  // Reactivate the user
+  // Remove the user from the company
   const { error } = await adminClient
-    .from("userRoles")
-    .update({ isActive: true })
+    .from("companyAssignments")
+    .delete()
     .eq("userId", targetUserId)
+    .eq("companyId", companyId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -72,16 +70,21 @@ export async function PUT(
 
   await logAuditEvent({
     userId: user.id,
-    action: "user.reactivate",
+    companyId,
+    action: "company.user.remove",
     outcome: "success",
     sourceIp: ip,
     userAgent,
-    requestMethod: "PUT",
-    requestPath: `/api/admin/users/${targetUserId}/reactivate`,
+    requestMethod: "DELETE",
+    requestPath: `/api/companies/${companyId}/users/${targetUserId}`,
     responseStatus: 200,
     correlationId,
-    details: { targetUserId, targetRole: targetRoleData.role },
+    details: {
+      targetUserId,
+      targetRole: targetRoleData.role,
+      actorRole: actorRoleData.role,
+    },
   })
 
-  return NextResponse.json({ message: "User reactivated successfully" })
+  return NextResponse.json({ message: "User removed from company" })
 }

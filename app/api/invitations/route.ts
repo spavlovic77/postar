@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { inviteUserSchema } from "@/lib/validations/user"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import { getUserRole, canInviteRole, canAssignCompanies } from "@/lib/auth/permissions"
+import type { UserRole } from "@/types"
 import crypto from "crypto"
 
 export async function GET() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -14,23 +18,19 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: userRole } = await supabase
-    .from("userRoles")
-    .select("role")
-    .eq("userId", user.id)
-    .single()
-
-  if (!userRole || !["superAdmin", "administrator"].includes(userRole.role)) {
+  const actorRoleData = await getUserRole(adminClient, user.id)
+  if (!actorRoleData || !["superAdmin", "administrator"].includes(actorRoleData.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const query = supabase
+  // SuperAdmin sees all invitations, Administrator sees only their own
+  let query = adminClient
     .from("invitations")
     .select("*")
     .order("createdAt", { ascending: false })
 
-  if (userRole.role === "administrator") {
-    query.eq("invitedBy", user.id)
+  if (actorRoleData.role === "administrator") {
+    query = query.eq("invitedBy", user.id)
   }
 
   const { data, error } = await query
@@ -48,6 +48,8 @@ export async function POST(request: Request) {
   const userAgent = request.headers.get("user-agent") ?? ""
 
   const supabase = await createClient()
+  const adminClient = createAdminClient()
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -56,13 +58,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: userRole } = await supabase
-    .from("userRoles")
-    .select("role")
-    .eq("userId", user.id)
-    .single()
-
-  if (!userRole || !["superAdmin", "administrator"].includes(userRole.role)) {
+  // Get actor's role
+  const actorRoleData = await getUserRole(adminClient, user.id)
+  if (!actorRoleData || !["superAdmin", "administrator"].includes(actorRoleData.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -76,27 +74,60 @@ export async function POST(request: Request) {
     )
   }
 
-  // Administrators can only invite accountants
-  if (userRole.role === "administrator" && result.data.role !== "accountant") {
+  const invitedRole = result.data.role as UserRole
+
+  // Check if actor can invite this role (hierarchy check)
+  if (!canInviteRole(actorRoleData.role as UserRole, invitedRole)) {
     return NextResponse.json(
-      { error: "Administrators can only invite accountants" },
+      { error: `You cannot invite users with ${invitedRole} role` },
       { status: 403 }
+    )
+  }
+
+  // Check if actor can assign the requested companies
+  const companyPermission = await canAssignCompanies(
+    adminClient,
+    user.id,
+    actorRoleData.role as UserRole,
+    result.data.companyIds || []
+  )
+
+  if (!companyPermission.allowed) {
+    return NextResponse.json(
+      { error: companyPermission.reason },
+      { status: 403 }
+    )
+  }
+
+  // Check if user is already invited or exists
+  const { data: existingInvitation } = await adminClient
+    .from("invitations")
+    .select("id, status")
+    .eq("email", result.data.email)
+    .eq("status", "pending")
+    .single()
+
+  if (existingInvitation) {
+    return NextResponse.json(
+      { error: "An invitation is already pending for this email" },
+      { status: 409 }
     )
   }
 
   const token = crypto.randomUUID()
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: invitation, error: invError } = await supabase
+  const { data: invitation, error: invError } = await adminClient
     .from("invitations")
     .insert({
       email: result.data.email,
       role: result.data.role,
       invitedBy: user.id,
+      invitedByRole: actorRoleData.role, // Track who invited
       token,
       expiresAt,
       status: "pending",
-      companyIds: result.data.companyIds,
+      companyIds: result.data.companyIds || [],
     })
     .select()
     .single()
@@ -118,7 +149,7 @@ export async function POST(request: Request) {
 
   if (otpError) {
     // Rollback invitation if OTP fails
-    await supabase.from("invitations").delete().eq("id", invitation.id)
+    await adminClient.from("invitations").delete().eq("id", invitation.id)
     return NextResponse.json(
       { error: "Failed to send invitation email" },
       { status: 500 }
@@ -138,7 +169,9 @@ export async function POST(request: Request) {
     details: {
       invitationId: invitation.id,
       email: result.data.email,
-      role: result.data.role,
+      invitedRole: result.data.role,
+      actorRole: actorRoleData.role,
+      companyIds: result.data.companyIds,
     },
   })
 
