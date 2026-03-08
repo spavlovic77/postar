@@ -12,11 +12,16 @@ async function requireSuperAdmin() {
 
   if (!user) return { error: "Unauthorized", status: 401 }
 
-  const { data: userRole } = await supabase
+  const { data: userRole, error: roleError } = await supabase
     .from("userRoles")
     .select("role")
     .eq("userId", user.id)
     .single()
+
+  if (roleError) {
+    console.error("requireSuperAdmin roleError:", roleError.message, "userId:", user.id)
+    return { error: roleError.message, status: 500 }
+  }
 
   if (!userRole || userRole.role !== "superAdmin") {
     return { error: "Forbidden", status: 403 }
@@ -63,14 +68,14 @@ export async function POST(request: Request) {
     )
   }
 
-  // Generate Peppol Participant ID from DIC
-  const peppolParticipantId = `0245:${result.data.dic.replace("SK", "")}`
-
   const { data, error } = await auth.supabase
     .from("companies")
     .insert({
-      ...result.data,
-      peppolParticipantId,
+      name: result.data.name,
+      dic: result.data.dic,
+      legalName: result.data.legalName,
+      adminEmail: result.data.adminEmail || null,
+      accessPointProviderId: result.data.accessPointProviderId || null,
       createdById: auth.user.id,
     })
     .select()
