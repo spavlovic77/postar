@@ -304,80 +304,21 @@ CREATE POLICY "Users can create deactivation requests"
 -- ============================================================
 -- 6. SEED SUPER ADMIN
 -- ============================================================
--- Create the auth user via Supabase Auth API, then assign superAdmin role.
--- NOTE: Run this AFTER creating the user in Supabase Dashboard or via:
---   Authentication > Users > Add User > Email: stanislav.pavlovic1@gmail.com, Password: .Speedo2217
+-- Two-step process:
 --
--- Once the user exists in auth.users, run:
-
-DO $$
-DECLARE
-  v_user_id UUID;
-BEGIN
-  -- Try to find the user by email
-  SELECT id INTO v_user_id
-  FROM auth.users
-  WHERE email = 'stanislav.pavlovic1@gmail.com';
-
-  -- If user not found, create via raw insert (Supabase managed auth)
-  IF v_user_id IS NULL THEN
-    v_user_id := gen_random_uuid();
-
-    INSERT INTO auth.users (
-      id,
-      instance_id,
-      email,
-      encrypted_password,
-      email_confirmed_at,
-      raw_app_meta_data,
-      raw_user_meta_data,
-      role,
-      aud,
-      created_at,
-      updated_at,
-      confirmation_token,
-      recovery_token
-    ) VALUES (
-      v_user_id,
-      '00000000-0000-0000-0000-000000000000',
-      'stanislav.pavlovic1@gmail.com',
-      crypt('.Speedo2217', gen_salt('bf')),
-      now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      '{}'::jsonb,
-      'authenticated',
-      'authenticated',
-      now(),
-      now(),
-      '',
-      ''
-    );
-
-    INSERT INTO auth.identities (
-      id,
-      user_id,
-      provider_id,
-      provider,
-      identity_data,
-      last_sign_in_at,
-      created_at,
-      updated_at
-    ) VALUES (
-      v_user_id,
-      v_user_id,
-      'stanislav.pavlovic1@gmail.com',
-      'email',
-      jsonb_build_object('sub', v_user_id::text, 'email', 'stanislav.pavlovic1@gmail.com'),
-      now(),
-      now(),
-      now()
-    );
-  END IF;
-
-  -- Assign superAdmin role
-  INSERT INTO "userRoles" ("userId", role, "isActive")
-  VALUES (v_user_id, 'superAdmin', true)
-  ON CONFLICT ("userId") DO UPDATE SET role = 'superAdmin', "isActive" = true;
-
-  RAISE NOTICE 'SuperAdmin created: % (stanislav.pavlovic1@gmail.com)', v_user_id;
-END $$;
+-- STEP A: Run this entire script in the SQL Editor (creates tables + policies)
+--
+-- STEP B: Create the superAdmin user via Dashboard UI:
+--   1. Go to Authentication > Users > Add User
+--   2. Email: stanislav.pavlovic1@gmail.com
+--   3. Password: .Speedo2217
+--   4. Check "Auto Confirm User"
+--   5. Click "Create User"
+--
+-- STEP C: Then run ONLY the SQL below in the SQL Editor to assign the role:
+--
+-- INSERT INTO "userRoles" ("userId", role, "isActive")
+-- SELECT id, 'superAdmin', true
+-- FROM auth.users
+-- WHERE email = 'stanislav.pavlovic1@gmail.com'
+-- ON CONFLICT ("userId") DO UPDATE SET role = 'superAdmin', "isActive" = true;
