@@ -40,21 +40,27 @@ async function requireSuperAdmin() {
 }
 
 export async function GET() {
-  const auth = await requireSuperAdmin()
-  if ("error" in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  try {
+    const auth = await requireSuperAdmin()
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    const { data, error } = await auth.supabase
+      .from("companies")
+      .select("*")
+      .order("createdAt", { ascending: false })
+
+    if (error) {
+      console.error("GET companies error:", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ data: data || [] })
+  } catch (err) {
+    console.error("GET companies exception:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-
-  const { data, error } = await auth.supabase
-    .from("companies")
-    .select("*")
-    .order("createdAt", { ascending: false })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ data })
 }
 
 export async function POST(request: Request) {
