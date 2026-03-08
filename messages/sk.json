@@ -1,0 +1,69 @@
+{
+  "common": {
+    "loading": "Nac\u0301\u00edtava sa...",
+    "error": "Nastala chyba",
+    "save": "Uloz\u030ci\u0165",
+    "cancel": "Zrus\u030ci\u0165",
+    "delete": "Odstra\u0301ni\u0165",
+    "edit": "Upravi\u0165",
+    "create": "Vytvori\u0165",
+    "search": "H\u013eada\u0165",
+    "noResults": "Z\u030ciadne vy\u0301sledky",
+    "confirm": "Potvrdi\u0165"
+  },
+  "auth": {
+    "login": "Prihla\u0301si\u0165 sa",
+    "logout": "Odhla\u0301si\u0165 sa",
+    "email": "E-mailova\u0301 adresa",
+    "password": "Heslo"
+  },
+  "documents": {
+    "title": "Dokumenty",
+    "send": "Odosla\u0165 dokument",
+    "receive": "Prijate\u0301 dokumenty",
+    "invoice": "Faktu\u0301ra",
+    "creditNote": "Dobropis",
+    "status": {
+      "accepted": "Prijate\u0301",
+      "received": "Doruc\u030cene\u0301",
+      "acknowledged": "Potvrdene\u0301"
+    },
+    "acknowledge": "Potvrdi\u0165 prijatie",
+    "sendSuccess": "Dokument bol u\u0301spes\u030cne odoslany\u0301",
+    "sendError": "Chyba pri odosielani\u0301 dokumentu"
+  },
+  "companies": {
+    "title": "Spoloc\u030cnosti",
+    "name": "Na\u0301zov spoloc\u030cnosti",
+    "dic": "DIC\u030c",
+    "accessPoint": "Pri\u0301stupovy\u0301 bod",
+    "create": "Prida\u0165 spoloc\u030cnos\u0165"
+  },
+  "accessPoints": {
+    "title": "Pri\u0301stupove\u0301 body",
+    "name": "Na\u0301zov",
+    "baseUrl": "URL adresa",
+    "credentials": "Prihlasovacie u\u0301daje"
+  },
+  "users": {
+    "title": "Pouz\u030ci\u0301vatelia",
+    "role": {
+      "superAdmin": "Super administra\u0301tor",
+      "administrator": "Administra\u0301tor",
+      "accountant": "U\u0301c\u030ctovni\u0301k"
+    }
+  },
+  "errors": {
+    "unauthorized": "Nema\u0301te opra\u0301vnenie",
+    "notFound": "Nena\u0301jdene\u0301",
+    "validation": "Neplatne\u0301 u\u0301daje",
+    "serverError": "Interna\u0301 chyba servera",
+    "rateLimited": "Pri\u0301lis\u030c ve\u013ea poz\u030ciadaviek"
+  },
+  "formatting": {
+    "dateFormat": "dd.MM.yyyy",
+    "timeFormat": "HH:mm",
+    "decimalSeparator": ",",
+    "thousandsSeparator": " "
+  }
+}

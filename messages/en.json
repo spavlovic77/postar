@@ -1,0 +1,69 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "noResults": "No results",
+    "confirm": "Confirm"
+  },
+  "auth": {
+    "login": "Log in",
+    "logout": "Log out",
+    "email": "Email address",
+    "password": "Password"
+  },
+  "documents": {
+    "title": "Documents",
+    "send": "Send document",
+    "receive": "Received documents",
+    "invoice": "Invoice",
+    "creditNote": "Credit Note",
+    "status": {
+      "accepted": "Accepted",
+      "received": "Received",
+      "acknowledged": "Acknowledged"
+    },
+    "acknowledge": "Acknowledge receipt",
+    "sendSuccess": "Document sent successfully",
+    "sendError": "Error sending document"
+  },
+  "companies": {
+    "title": "Companies",
+    "name": "Company name",
+    "dic": "Tax ID",
+    "accessPoint": "Access Point",
+    "create": "Add company"
+  },
+  "accessPoints": {
+    "title": "Access Points",
+    "name": "Name",
+    "baseUrl": "URL",
+    "credentials": "Credentials"
+  },
+  "users": {
+    "title": "Users",
+    "role": {
+      "superAdmin": "Super Admin",
+      "administrator": "Administrator",
+      "accountant": "Accountant"
+    }
+  },
+  "errors": {
+    "unauthorized": "Unauthorized",
+    "notFound": "Not found",
+    "validation": "Invalid data",
+    "serverError": "Internal server error",
+    "rateLimited": "Too many requests"
+  },
+  "formatting": {
+    "dateFormat": "MM/dd/yyyy",
+    "timeFormat": "hh:mm a",
+    "decimalSeparator": ".",
+    "thousandsSeparator": ","
+  }
+}
