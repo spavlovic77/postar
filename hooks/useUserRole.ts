@@ -16,11 +16,15 @@ export function useUserRole() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("userRoles")
           .select("role")
           .eq("userId", user.id)
           .single()
+
+        if (error) {
+          console.error("useUserRole error:", error.message, "userId:", user.id)
+        }
 
         if (data) {
           setRole(data.role as UserRole)
