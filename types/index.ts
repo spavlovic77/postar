@@ -4,6 +4,33 @@ export interface User {
   id: string
   email: string
   role: UserRole
+  isActive: boolean
+  createdAt: string
+}
+
+export type InvitationStatus = "pending" | "accepted" | "expired" | "cancelled"
+
+export interface Invitation {
+  id: string
+  email: string
+  role: "administrator" | "accountant"
+  invitedBy: string
+  token: string
+  expiresAt: string
+  status: InvitationStatus
+  companyIds: string[]
+  createdAt: string
+}
+
+export type DeactivationRequestStatus = "pending" | "approved" | "rejected"
+
+export interface DeactivationRequest {
+  id: string
+  userId: string
+  reason: string | null
+  status: DeactivationRequestStatus
+  processedBy: string | null
+  processedAt: string | null
   createdAt: string
 }
 
@@ -11,9 +38,12 @@ export interface Company {
   id: string
   name: string
   dic: string
+  legalName: string | null
+  adminEmail: string | null
   peppolParticipantId: string
   accessPointProviderId: string | null
   isActive: boolean
+  createdById: string | null
   createdAt: string
   updatedAt: string
 }

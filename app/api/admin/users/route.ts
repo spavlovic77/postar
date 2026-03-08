@@ -1,0 +1,39 @@
+import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+
+export async function GET() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { data: userRole } = await supabase
+    .from("userRoles")
+    .select("role")
+    .eq("userId", user.id)
+    .single()
+
+  if (!userRole || userRole.role !== "superAdmin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const { data, error } = await supabase
+    .from("userRoles")
+    .select(`
+      *,
+      companyAssignments:companyAssignments(
+        company:companyId(id, name, dic)
+      )
+    `)
+    .order("createdAt", { ascending: false })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ data })
+}

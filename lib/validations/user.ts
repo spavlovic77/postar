@@ -11,5 +11,10 @@ export const inviteUserSchema = z.object({
   companyIds: z.array(z.string().uuid()).min(1, "Vyberte aspoň jednu spoločnosť"),
 })
 
+export const deactivationRequestSchema = z.object({
+  reason: z.string().optional(),
+})
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type InviteUserInput = z.infer<typeof inviteUserSchema>
+export type DeactivationRequestInput = z.infer<typeof deactivationRequestSchema>

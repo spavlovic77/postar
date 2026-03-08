@@ -6,29 +6,71 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   FileText,
-  Inbox,
-  Send,
   Building2,
   Users,
   Settings,
   ChevronLeft,
   ChevronRight,
+  Server,
+  ScrollText,
+  ShieldAlert,
+  Mail,
+  LayoutDashboard,
+  Shield,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useUserRole } from "@/hooks/useUserRole"
+import type { UserRole } from "@/types"
 
-const navigation = [
-  { name: "Dokumenty", href: "/", icon: FileText },
-  { name: "Prijaté", href: "/documents?tab=inbox", icon: Inbox },
-  { name: "Odoslané", href: "/documents?tab=outbox", icon: Send },
-  { name: "Spoločnosti", href: "/companies", icon: Building2 },
-  { name: "Používatelia", href: "/users", icon: Users },
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ size?: number }>
+}
+
+const superAdminNav: NavItem[] = [
+  { name: "Prehlad", href: "/admin", icon: LayoutDashboard },
+  { name: "Spolocnosti", href: "/admin/companies", icon: Building2 },
+  { name: "Pouzivatelia", href: "/admin/users", icon: Users },
+  { name: "Deaktivacie", href: "/admin/deactivation-requests", icon: ShieldAlert },
+  { name: "Pristupove body", href: "/admin/accessPoints", icon: Server },
+  { name: "Audit log", href: "/admin/auditLogs", icon: ScrollText },
+  { name: "Dokumenty", href: "/documents", icon: FileText },
+  { name: "Nastavenia", href: "/settings", icon: Settings },
 ]
+
+const administratorNav: NavItem[] = [
+  { name: "Moja spolocnost", href: "/dashboard/company", icon: Building2 },
+  { name: "Uctovnici", href: "/dashboard/accountants", icon: Users },
+  { name: "Pozvat uctovnika", href: "/dashboard/invite", icon: Mail },
+  { name: "Dokumenty", href: "/documents", icon: FileText },
+  { name: "Nastavenia", href: "/settings", icon: Settings },
+]
+
+const accountantNav: NavItem[] = [
+  { name: "Spolocnosti", href: "/companies", icon: Building2 },
+  { name: "Dokumenty", href: "/documents", icon: FileText },
+  { name: "Nastavenia", href: "/settings", icon: Settings },
+]
+
+function getNavForRole(role: UserRole | null): NavItem[] {
+  switch (role) {
+    case "superAdmin":
+      return superAdminNav
+    case "administrator":
+      return administratorNav
+    case "accountant":
+      return accountantNav
+    default:
+      return accountantNav
+  }
+}
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { role } = useUserRole()
+  const navigation = getNavForRole(role)
 
   return (
     <aside
@@ -46,17 +88,28 @@ export function Sidebar() {
           size="icon"
           onClick={() => setCollapsed(!collapsed)}
           className="h-8 w-8"
-          aria-label={collapsed ? "Rozbaliť menu" : "Zbaliť menu"}
+          aria-label={collapsed ? "Rozbalit menu" : "Zbalit menu"}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </Button>
       </div>
 
-      <nav className="flex-1 space-y-1 p-2" aria-label="Hlavná navigácia">
+      {role === "superAdmin" && !collapsed && (
+        <div className="border-b border-border px-4 py-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-primary">
+            <Shield size={14} />
+            Super Admin
+          </div>
+        </div>
+      )}
+
+      <nav className="flex-1 space-y-1 p-2" aria-label="Hlavna navigacia">
         {navigation.map((item) => {
+          const basePath = item.href.split("?")[0]
           const isActive =
             pathname === item.href ||
-            pathname.startsWith(item.href.split("?")[0] + "/")
+            (basePath !== "/" && pathname.startsWith(basePath + "/")) ||
+            (basePath !== "/" && pathname === basePath)
           return (
             <Link
               key={item.name}
@@ -74,18 +127,6 @@ export function Sidebar() {
           )
         })}
       </nav>
-
-      {role === "superAdmin" && (
-        <div className="border-t border-border p-2">
-          <Link
-            href="/admin"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <Settings size={20} />
-            {!collapsed && <span>Administrácia</span>}
-          </Link>
-        </div>
-      )}
     </aside>
   )
 }

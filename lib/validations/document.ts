@@ -23,14 +23,23 @@ export const sendDocumentSchema = z.object({
 })
 
 export const companySchema = z.object({
-  name: z.string().min(2, "Company name required"),
+  name: z.string().min(2, "Názov spoločnosti je povinný"),
   dic: z
     .string()
     .regex(
       /^SK\d{10}$/,
-      "Invalid DIC format (must be SK followed by 10 digits)"
+      "Neplatný formát DIČ (musí byť SK a 10 číslic)"
     ),
-  accessPointProviderId: z.string().uuid("Invalid Access Point ID"),
+  legalName: z.string().min(2, "Obchodné meno je povinné"),
+  adminEmail: z.string().email("Neplatná e-mailová adresa").optional().or(z.literal("")),
+  accessPointProviderId: z.string().uuid("Neplatný prístupový bod").optional().or(z.literal("")),
+})
+
+export const companyUpdateSchema = z.object({
+  name: z.string().min(2, "Názov spoločnosti je povinný").optional(),
+  legalName: z.string().min(2, "Obchodné meno je povinné").optional(),
+  adminEmail: z.string().email("Neplatná e-mailová adresa").optional().or(z.literal("")),
+  accessPointProviderId: z.string().uuid("Neplatný prístupový bod").optional().or(z.literal("")),
 })
 
 export const accessPointSchema = z.object({
@@ -42,4 +51,5 @@ export const accessPointSchema = z.object({
 
 export type SendDocumentInput = z.infer<typeof sendDocumentSchema>
 export type CompanyInput = z.infer<typeof companySchema>
+export type CompanyUpdateInput = z.infer<typeof companyUpdateSchema>
 export type AccessPointInput = z.infer<typeof accessPointSchema>
