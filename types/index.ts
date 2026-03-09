@@ -101,10 +101,16 @@ export interface AuditLog {
   details: Record<string, unknown> | null
 }
 
+export type IonApUserStatus = "pending" | "success" | "failed"
+
 export interface CompanyAssignment {
   id: string
   userId: string
   companyId: string
   assignedById: string
+  ionApUserId: number | null
+  ionApAuthToken: string | null
+  ionApUserStatus: IonApUserStatus | null
+  ionApUserError: string | null
   createdAt: string
 }

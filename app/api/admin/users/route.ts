@@ -34,32 +34,46 @@ export async function GET() {
     return NextResponse.json({ error: rolesError.message }, { status: 500 })
   }
 
-  // Get all company assignments with company details
+  // Get all company assignments with ION AP user status
   const { data: assignments } = await adminClient
     .from("companyAssignments")
-    .select("userId, companyId")
+    .select("id, userId, companyId, ionApUserId, ionApAuthToken, ionApUserStatus, ionApUserError")
 
   const { data: companies } = await adminClient
     .from("companies")
-    .select("id, name, dic")
+    .select("id, legalName, dic")
 
-  // Build a map of userId to companies
+  // Build a map of userId to assignments with company details
   const companyMap = new Map(companies?.map(c => [c.id, c]) || [])
-  const userCompanies = new Map<string, Array<{ id: string; name: string; dic: string }>>()
-  
+  const userAssignments = new Map<string, Array<{
+    assignmentId: string
+    company: { id: string; legalName: string | null; dic: string }
+    ionApUserId: number | null
+    ionApUserStatus: string | null
+    ionApUserError: string | null
+    hasAuthToken: boolean
+  }>>()
+
   for (const assignment of assignments || []) {
     const company = companyMap.get(assignment.companyId)
     if (company) {
-      const existing = userCompanies.get(assignment.userId) || []
-      existing.push(company)
-      userCompanies.set(assignment.userId, existing)
+      const existing = userAssignments.get(assignment.userId) || []
+      existing.push({
+        assignmentId: assignment.id,
+        company,
+        ionApUserId: assignment.ionApUserId,
+        ionApUserStatus: assignment.ionApUserStatus,
+        ionApUserError: assignment.ionApUserError,
+        hasAuthToken: !!assignment.ionApAuthToken,
+      })
+      userAssignments.set(assignment.userId, existing)
     }
   }
 
   // Combine roles with company assignments
   const data = roles?.map(role => ({
     ...role,
-    companies: userCompanies.get(role.userId) || []
+    companyAssignments: userAssignments.get(role.userId) || []
   }))
 
   return NextResponse.json({ data })

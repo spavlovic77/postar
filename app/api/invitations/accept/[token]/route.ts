@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { syncUserToIonAp } from "@/lib/ionAp/sync"
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params
@@ -16,6 +17,8 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  console.log(`[Invitation] Accepting invitation token=${token} for user=${user.id} (${user.email})`)
 
   // Use admin client to bypass RLS
   const { data: invitation } = await adminClient
@@ -50,6 +53,8 @@ export async function GET(
     .eq("userId", user.id)
     .single()
 
+  const effectiveRole = existingRole?.role || invitation.role
+
   if (!existingRole) {
     // Create user role
     await adminClient.from("userRoles").insert({
@@ -57,11 +62,13 @@ export async function GET(
       role: invitation.role,
       isActive: true,
     })
+    console.log(`[Invitation] Created role=${invitation.role} for user=${user.id}`)
   }
 
-  // Create company assignments
+  // Create company assignments and collect new assignment IDs
   const companyIds: string[] = invitation.companyIds || []
-  
+  const newAssignmentIds: string[] = []
+
   for (const companyId of companyIds) {
     const { data: existing } = await adminClient
       .from("companyAssignments")
@@ -71,11 +78,23 @@ export async function GET(
       .single()
 
     if (!existing) {
-      await adminClient.from("companyAssignments").insert({
-        userId: user.id,
-        companyId,
-        assignedById: invitation.invitedBy,
-      })
+      const { data: newAssignment } = await adminClient
+        .from("companyAssignments")
+        .insert({
+          userId: user.id,
+          companyId,
+          assignedById: invitation.invitedBy,
+        })
+        .select("id")
+        .single()
+
+      if (newAssignment) {
+        newAssignmentIds.push(newAssignment.id)
+        console.log(`[Invitation] Created assignment=${newAssignment.id} for user=${user.id}, company=${companyId}`)
+      }
+    } else {
+      // Existing assignment — still need to sync user if not done yet
+      newAssignmentIds.push(existing.id)
     }
   }
 
@@ -85,5 +104,17 @@ export async function GET(
     .update({ status: "accepted" })
     .eq("id", invitation.id)
 
-  return NextResponse.json({ success: true, role: invitation.role })
+  console.log(`[Invitation] Invitation accepted: invitationId=${invitation.id}, role=${effectiveRole}`)
+
+  // Fire-and-forget: create ION AP users for administrators
+  if (effectiveRole === "administrator" && newAssignmentIds.length > 0) {
+    console.log(`[Invitation] Triggering ION AP user sync for ${newAssignmentIds.length} assignments`)
+    for (const assignmentId of newAssignmentIds) {
+      syncUserToIonAp(assignmentId).catch((err) =>
+        console.error(`[Invitation] ION AP user sync failed for assignment=${assignmentId}:`, err)
+      )
+    }
+  }
+
+  return NextResponse.json({ success: true, role: effectiveRole })
 }

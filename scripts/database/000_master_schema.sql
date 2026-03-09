@@ -128,6 +128,10 @@ CREATE TABLE IF NOT EXISTS public."companyAssignments" (
   "userId" uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   "companyId" uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   "assignedById" uuid REFERENCES auth.users(id),
+  "ionApUserId" integer,
+  "ionApAuthToken" text,
+  "ionApUserStatus" text DEFAULT 'pending' CHECK ("ionApUserStatus" IN ('pending', 'success', 'failed')),
+  "ionApUserError" text,
   "createdAt" timestamptz DEFAULT now(),
   UNIQUE("userId", "companyId")
 );

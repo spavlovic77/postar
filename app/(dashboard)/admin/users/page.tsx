@@ -9,6 +9,11 @@ import {
   UserCheck,
   KeyRound,
   Mail,
+  Cloud,
+  CloudOff,
+  Loader2,
+  RefreshCw,
+  RotateCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +44,15 @@ import {
 import { EmptyState } from "@/components/feedback/emptyState"
 import type { Company } from "@/types"
 
+interface CompanyAssignmentEntry {
+  assignmentId: string
+  company: { id: string; legalName: string | null; dic: string }
+  ionApUserId: number | null
+  ionApUserStatus: string | null
+  ionApUserError: string | null
+  hasAuthToken: boolean
+}
+
 interface UserEntry {
   id: string
   userId: string
@@ -46,7 +60,7 @@ interface UserEntry {
   isActive: boolean
   createdAt: string
   user?: { email: string } | null
-  companyAssignments?: { company: { id: string; legalName: string | null; dic: string } }[]
+  companyAssignments?: CompanyAssignmentEntry[]
 }
 
 const roleLabels: Record<string, string> = {
@@ -62,17 +76,21 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("")
   const [inviteOpen, setInviteOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [syncingAssignmentId, setSyncingAssignmentId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "accountant" as "administrator" | "accountant",
     companyIds: [] as string[],
   })
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (showRefresh = false) => {
+    if (showRefresh) setRefreshing(true)
     const res = await fetch("/api/admin/users")
     const json = await res.json()
     setUsers(json.data || [])
     setLoading(false)
+    if (showRefresh) setRefreshing(false)
   }, [])
 
   const fetchCompanies = useCallback(async () => {
@@ -133,6 +151,55 @@ export default function AdminUsersPage() {
     }))
   }
 
+  async function handleIonApUserSync(assignmentId: string) {
+    setSyncingAssignmentId(assignmentId)
+    try {
+      const res = await fetch(`/api/admin/assignments/${assignmentId}/ion-ap-user-sync`, {
+        method: "POST",
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(`ION AP user sync zlyhalo: ${json.error || "Neznama chyba"}`)
+      }
+      fetchUsers()
+    } finally {
+      setSyncingAssignmentId(null)
+    }
+  }
+
+  function getIonApUserBadge(assignment: CompanyAssignmentEntry) {
+    if (assignment.ionApUserStatus === "success") {
+      return (
+        <span title={`ION AP User #${assignment.ionApUserId}${assignment.hasAuthToken ? " (token ok)" : " (no token)"}`}>
+          <Cloud size={10} className="text-green-600 inline ml-1" />
+        </span>
+      )
+    }
+    if (assignment.ionApUserStatus === "failed") {
+      return (
+        <span className="inline-flex items-center" title={assignment.ionApUserError || "ION AP user failed"}>
+          <CloudOff size={10} className="text-red-500 inline ml-1" />
+          <button
+            onClick={(e) => { e.stopPropagation(); handleIonApUserSync(assignment.assignmentId) }}
+            disabled={syncingAssignmentId === assignment.assignmentId}
+            className="ml-0.5 hover:text-blue-600"
+            title="Skusit znova vytvorit ION AP pouzivatela"
+          >
+            {syncingAssignmentId === assignment.assignmentId ? (
+              <Loader2 size={10} className="animate-spin inline" />
+            ) : (
+              <RefreshCw size={10} className="inline" />
+            )}
+          </button>
+        </span>
+      )
+    }
+    if (assignment.ionApUserStatus === "pending") {
+      return <span title="Caka na ION AP"><Loader2 size={10} className="text-muted-foreground inline ml-1" /></span>
+    }
+    return null
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
@@ -142,10 +209,21 @@ export default function AdminUsersPage() {
             Pouzivatelia
           </h1>
         </div>
-        <Button onClick={() => setInviteOpen(true)}>
-          <Plus size={16} className="mr-2" />
-          Pozvat pouzivatela
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fetchUsers(true)}
+            disabled={refreshing}
+            title="Obnovit zoznam"
+          >
+            <RotateCw size={16} className={refreshing ? "animate-spin" : ""} />
+          </Button>
+          <Button onClick={() => setInviteOpen(true)}>
+            <Plus size={16} className="mr-2" />
+            Pozvat pouzivatela
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -190,8 +268,9 @@ export default function AdminUsersPage() {
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {entry.companyAssignments?.map((ca) => (
-                        <Badge key={ca.company.id} variant="outline">
+                        <Badge key={ca.assignmentId} variant="outline" className="gap-0.5">
                           {ca.company.legalName || ca.company.dic}
+                          {entry.role === "administrator" && getIonApUserBadge(ca)}
                         </Badge>
                       )) || "—"}
                     </div>

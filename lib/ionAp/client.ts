@@ -26,6 +26,23 @@ export interface IonApIdentifier {
   }
 }
 
+export interface IonApUser {
+  id: number
+  email: string
+  email_verified: string
+  auth_token: string
+  links?: {
+    self: string
+  }
+}
+
+export interface IonApUserListResponse {
+  count: number
+  next: string | null
+  previous: string | null
+  results: IonApUser[]
+}
+
 export interface IonApError {
   detail?: string
   [key: string]: unknown
@@ -124,6 +141,57 @@ export class IonApClient {
         }),
       }
     )
+  }
+
+  /**
+   * Create a user on an ION AP organization
+   */
+  async createUser(orgId: number, email: string): Promise<IonApUser> {
+    console.log(`[ION AP] createUser: orgId=${orgId}, email=${email}`)
+    return this.request<IonApUser>(
+      `/organizations/${orgId}/users`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }
+    )
+  }
+
+  /**
+   * List users on an ION AP organization
+   */
+  async getUsers(orgId: number): Promise<IonApUserListResponse> {
+    console.log(`[ION AP] getUsers: orgId=${orgId}`)
+    return this.request<IonApUserListResponse>(
+      `/organizations/${orgId}/users`,
+      { method: "GET" }
+    )
+  }
+
+  /**
+   * Create user on ION AP org and fetch their auth_token.
+   * Returns userId and authToken.
+   */
+  async registerUser(orgId: number, email: string): Promise<{ userId: number; authToken: string }> {
+    console.log(`[ION AP] registerUser: orgId=${orgId}, email=${email}`)
+
+    const user = await this.createUser(orgId, email)
+    console.log(`[ION AP] User created: userId=${user.id}`)
+
+    // Fetch users list to get the auth_token (POST response may not include it)
+    const usersResponse = await this.getUsers(orgId)
+    const matchedUser = usersResponse.results.find(u => u.email === email)
+
+    if (!matchedUser || !matchedUser.auth_token) {
+      throw new Error(`User created but auth_token not found for email=${email}`)
+    }
+
+    console.log(`[ION AP] Auth token retrieved for userId=${matchedUser.id}`)
+
+    return {
+      userId: matchedUser.id,
+      authToken: matchedUser.auth_token,
+    }
   }
 
   /**
