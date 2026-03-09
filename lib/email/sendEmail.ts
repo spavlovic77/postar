@@ -12,15 +12,29 @@
 
 import nodemailer from "nodemailer"
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 465),
-  secure: Number(process.env.SMTP_PORT || 465) === 465,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+// Lazy-init transporter so env vars are available at runtime
+let _transporter: nodemailer.Transporter | null = null
+
+function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    const host = process.env.SMTP_HOST
+    const port = Number(process.env.SMTP_PORT || 587)
+    const secure = port === 465
+
+    console.log(`[Email] Creating SMTP transporter: host=${host}, port=${port}, secure=${secure}, user=${process.env.SMTP_USER ? process.env.SMTP_USER.substring(0, 3) + "***" : "NOT SET"}`)
+
+    _transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
+  }
+  return _transporter
+}
 
 export interface SendEmailOptions {
   to: string
@@ -37,6 +51,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
   }
 
   try {
+    const transporter = getTransporter()
     const info = await transporter.sendMail({
       from,
       to: options.to,
@@ -49,6 +64,8 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     console.error(`[Email] Failed to send to ${options.to}: ${message}`)
+    // Reset transporter on failure so next attempt creates a fresh connection
+    _transporter = null
     return { success: false, error: message }
   }
 }
