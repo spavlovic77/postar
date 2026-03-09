@@ -1,49 +1,11 @@
 /**
- * Send email via SMTP using nodemailer.
+ * Send email via Resend HTTP API.
  *
- * Uses the same SMTP credentials configured in Supabase Dashboard.
  * Required env vars:
- *   SMTP_HOST     - e.g. smtp.resend.com, smtp.sendgrid.net
- *   SMTP_PORT     - e.g. 465 (SSL) or 587 (TLS)
- *   SMTP_USER     - SMTP username
- *   SMTP_PASS     - SMTP password / API key
- *   SMTP_FROM     - Sender address, e.g. "Postar <noreply@yourdomain.com>"
+ *   RESEND_API_KEY  - Resend API key (re_...)
+ *   EMAIL_FROM      - Sender address, e.g. "Postar <noreply@yourdomain.com>"
+ *                     Must be a verified domain in Resend, or use "onboarding@resend.dev" for testing.
  */
-
-import nodemailer from "nodemailer"
-
-// Lazy-init transporter so env vars are available at runtime
-let _transporter: nodemailer.Transporter | null = null
-
-function getTransporter(): nodemailer.Transporter {
-  if (!_transporter) {
-    const host = process.env.SMTP_HOST
-    const port = Number(process.env.SMTP_PORT || 587)
-    const secure = port === 465
-
-    const user = process.env.SMTP_USER || ""
-    const pass = process.env.SMTP_PASS || ""
-    console.log(`[Email] Creating SMTP transporter: host=${host}, port=${port}, secure=${secure}, user=${user ? user.substring(0, 5) + "***" + (user.includes("@") ? "@" + user.split("@")[1] : "") : "NOT SET"}, passLength=${pass.length}`)
-
-    _transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        // WebSupport and some providers need this for SSL on port 465
-        rejectUnauthorized: true,
-        minVersion: "TLSv1.2",
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    })
-  }
-  return _transporter
-}
 
 export interface SendEmailOptions {
   to: string
@@ -52,29 +14,44 @@ export interface SendEmailOptions {
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
-  const from = process.env.SMTP_FROM || "Postar <noreply@postar.sk>"
+  const apiKey = process.env.RESEND_API_KEY
+  const from = process.env.EMAIL_FROM || "Postar <onboarding@resend.dev>"
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.error("[Email] SMTP not configured — missing SMTP_HOST, SMTP_USER, or SMTP_PASS env vars")
-    return { success: false, error: "SMTP not configured" }
+  if (!apiKey) {
+    console.error("[Email] RESEND_API_KEY not configured")
+    return { success: false, error: "Email service not configured" }
   }
 
+  console.log(`[Email] Sending via Resend to ${options.to}, from=${from}`)
+
   try {
-    const transporter = getTransporter()
-    const info = await transporter.sendMail({
-      from,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [options.to],
+        subject: options.subject,
+        html: options.html,
+      }),
     })
 
-    console.log(`[Email] Sent to ${options.to}, messageId=${info.messageId}`)
+    const data = await res.json()
+
+    if (!res.ok) {
+      const errorMsg = data?.message || data?.error || JSON.stringify(data)
+      console.error(`[Email] Resend API error (${res.status}): ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+
+    console.log(`[Email] Sent to ${options.to}, id=${data.id}`)
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     console.error(`[Email] Failed to send to ${options.to}: ${message}`)
-    // Reset transporter on failure so next attempt creates a fresh connection
-    _transporter = null
     return { success: false, error: message }
   }
 }
