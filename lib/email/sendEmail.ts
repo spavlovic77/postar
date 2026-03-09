@@ -21,7 +21,9 @@ function getTransporter(): nodemailer.Transporter {
     const port = Number(process.env.SMTP_PORT || 587)
     const secure = port === 465
 
-    console.log(`[Email] Creating SMTP transporter: host=${host}, port=${port}, secure=${secure}, user=${process.env.SMTP_USER ? process.env.SMTP_USER.substring(0, 3) + "***" : "NOT SET"}`)
+    const user = process.env.SMTP_USER || ""
+    const pass = process.env.SMTP_PASS || ""
+    console.log(`[Email] Creating SMTP transporter: host=${host}, port=${port}, secure=${secure}, user=${user ? user.substring(0, 5) + "***" + (user.includes("@") ? "@" + user.split("@")[1] : "") : "NOT SET"}, passLength=${pass.length}`)
 
     _transporter = nodemailer.createTransport({
       host,
