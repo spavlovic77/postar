@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { getUserRole } from "@/lib/auth/permissions"
+import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import crypto from "crypto"
 
 export async function POST(
   request: Request,
@@ -56,6 +58,27 @@ export async function POST(
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
+
+  // Log audit event
+  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
+  const userAgent = request.headers.get("user-agent") ?? ""
+  
+  await logAuditEvent({
+    userId: user.id,
+    action: "invitation.cancel",
+    outcome: "success",
+    sourceIp: ip,
+    userAgent,
+    requestMethod: "POST",
+    requestPath: `/api/invitations/${id}/cancel`,
+    responseStatus: 200,
+    correlationId: crypto.randomUUID(),
+    details: {
+      invitationId: id,
+      email: invitation.email,
+      actorRole: actorRoleData.role,
+    },
+  })
 
   return NextResponse.json({ success: true, message: "Invitation cancelled" })
 }
