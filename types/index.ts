@@ -35,17 +35,23 @@ export interface DeactivationRequest {
 }
 
 export type CompanyStatus = "draft" | "active" | "suspended"
+export type IonApStatus = "pending" | "success" | "failed"
 
 export interface Company {
   id: string
   dic: string
   legalName: string | null
   adminEmail: string | null
+  adminPhone: string | null
   peppolParticipantId: string | null
   accessPointProviderId: string | null
   isActive: boolean
   status: CompanyStatus
   pfsVerificationToken: string | null
+  ionApOrgId: number | null
+  ionApIdentifierId: number | null
+  ionApStatus: IonApStatus | null
+  ionApError: string | null
   createdById: string | null
   createdAt: string
   updatedAt: string

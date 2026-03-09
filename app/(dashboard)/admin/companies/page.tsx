@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, Plus, Pencil, Trash2, Search, CheckCircle } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, Search, CheckCircle, RefreshCw, Cloud, CloudOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,6 +44,7 @@ export default function AdminCompaniesPage() {
   const [editing, setEditing] = useState<Company | null>(null)
   const [deleting, setDeleting] = useState<Company | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     dic: "",
     legalName: "",
@@ -165,6 +166,62 @@ export default function AdminCompaniesPage() {
     }
   }
 
+  async function handleIonApSync(company: Company) {
+    setSyncingId(company.id)
+    try {
+      const res = await fetch(`/api/admin/companies/${company.id}/ion-ap-sync`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        fetchCompanies()
+      }
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  function getIonApBadge(company: Company) {
+    if (company.ionApStatus === "success") {
+      return (
+        <Badge variant="default" className="bg-green-50 text-green-700 border-green-200 gap-1">
+          <Cloud size={12} />
+          ION #{company.ionApOrgId}
+        </Badge>
+      )
+    }
+    if (company.ionApStatus === "failed") {
+      return (
+        <div className="flex items-center gap-1">
+          <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200 gap-1">
+            <CloudOff size={12} />
+            Zlyhalo
+          </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title={company.ionApError || "Skusit znova"}
+            onClick={() => handleIonApSync(company)}
+            disabled={syncingId === company.id}
+          >
+            {syncingId === company.id ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <RefreshCw size={12} />
+            )}
+          </Button>
+        </div>
+      )
+    }
+    // pending or null
+    return (
+      <Badge variant="outline" className="text-muted-foreground gap-1">
+        <Loader2 size={12} />
+        Caka
+      </Badge>
+    )
+  }
+
   function getStatusBadge(status: string | undefined) {
     switch (status) {
       case "draft":
@@ -235,6 +292,7 @@ export default function AdminCompaniesPage() {
                 <TableHead>Obchodne meno</TableHead>
                 <TableHead>Admin e-mail</TableHead>
                 <TableHead>PFS Token</TableHead>
+                <TableHead>ION AP</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[140px]">Akcie</TableHead>
               </TableRow>
@@ -251,6 +309,9 @@ export default function AdminCompaniesPage() {
                         {company.pfsVerificationToken.substring(0, 12)}...
                       </span>
                     ) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {getIonApBadge(company)}
                   </TableCell>
                   <TableCell>
                     {getStatusBadge(company.status)}
