@@ -49,6 +49,12 @@ export class IonApClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
+    const method = options.method || "GET"
+
+    console.log(`[ION AP] ${method} ${url}`)
+    if (options.body) {
+      console.log(`[ION AP] Request body: ${options.body}`)
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -66,6 +72,7 @@ export class IonApClient {
       } catch {
         // ignore parse errors
       }
+      console.error(`[ION AP] ${method} ${url} failed: status=${response.status}`, JSON.stringify(errorBody))
       throw new IonApApiError(
         `ION AP request failed: ${response.status}`,
         response.status,
@@ -73,7 +80,9 @@ export class IonApClient {
       )
     }
 
-    return response.json() as Promise<T>
+    const data = await response.json() as T
+    console.log(`[ION AP] ${method} ${url} success:`, JSON.stringify(data))
+    return data
   }
 
   /**
@@ -126,13 +135,17 @@ export class IonApClient {
     reference: string
     name?: string
   }): Promise<{ orgId: number; identifierId: number }> {
+    console.log(`[ION AP] registerCompany: dic=${params.dic}, name=${params.name}, reference=${params.reference}`)
+
     const org = await this.createOrganization({
       name: params.name || "Company",
       country: "SK",
       reference: params.reference,
     })
+    console.log(`[ION AP] Organization created: orgId=${org.id}`)
 
     const identifier = await this.addIdentifier(org.id, params.dic)
+    console.log(`[ION AP] Identifier added: identifierId=${identifier.id}, identifier=0245:${params.dic}`)
 
     return {
       orgId: org.id,

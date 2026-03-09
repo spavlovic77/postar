@@ -39,6 +39,7 @@ export const companySchema = z.object({
 export const companyUpdateSchema = z.object({
   legalName: z.string().min(2, "Obchodné meno je povinné").optional(),
   adminEmail: z.string().email("Neplatná e-mailová adresa").optional().or(z.literal("")),
+  adminPhone: z.string().optional().or(z.literal("")),
   accessPointProviderId: z.string().uuid("Neplatný prístupový bod").optional().or(z.literal("")),
   pfsVerificationToken: z.string().optional().or(z.literal("")),
   status: z.enum(["draft", "active", "suspended"]).optional(),

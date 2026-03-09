@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { syncCompanyToIonAp } from "@/lib/ionAp/sync"
 
 /**
  * POST /api/admin/companies/[id]/ion-ap-sync
  *
  * Manually trigger ION AP registration for a company.
+ * Resets ionApStatus to pending before sync so failed companies can be retried.
  * SuperAdmin only.
  */
 export async function POST(
@@ -32,6 +33,19 @@ export async function POST(
   if (role?.role !== "superAdmin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  // Reset status so sync doesn't skip — allows retry after failure
+  const adminClient = createAdminClient()
+  await adminClient
+    .from("companies")
+    .update({
+      ionApStatus: "pending",
+      ionApError: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", id)
+
+  console.log(`[ION AP Sync] Manual retry triggered for company=${id} by user=${user.id}`)
 
   const result = await syncCompanyToIonAp(id)
 

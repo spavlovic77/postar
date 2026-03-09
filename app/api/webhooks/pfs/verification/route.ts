@@ -63,10 +63,13 @@ export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
   const userAgent = request.headers.get("user-agent") ?? ""
 
+  console.log(`[PFS Webhook] Received verification webhook. correlationId=${correlationId}, ip=${ip}`)
+
   try {
     // Get signature from header
     const signature = request.headers.get("x-pfs-signature")
     if (!signature) {
+      console.warn(`[PFS Webhook] Missing X-PFS-Signature header. correlationId=${correlationId}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -84,9 +87,11 @@ export async function POST(request: Request) {
 
     // Get raw body for signature validation
     const rawBody = await request.text()
-    
+    console.log(`[PFS Webhook] Raw body (${rawBody.length} bytes): ${rawBody.substring(0, 500)}`)
+
     // Validate signature
     if (!validateSignature(rawBody, signature)) {
+      console.warn(`[PFS Webhook] Invalid signature. correlationId=${correlationId}, signature=${signature}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -102,11 +107,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
     }
 
+    console.log(`[PFS Webhook] Signature valid. correlationId=${correlationId}`)
+
     // Parse payload
     let payload: PfsVerificationPayload
     try {
       payload = JSON.parse(rawBody)
     } catch {
+      console.error(`[PFS Webhook] Invalid JSON payload. correlationId=${correlationId}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -122,8 +130,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
     }
 
+    console.log(`[PFS Webhook] Parsed payload: dic=${payload.dic}, token=${payload.verification_token}, legalName=${payload.legalName}, email=${payload.company_email}, phone=${payload.company_phone}`)
+
     // Validate required fields
     if (!payload.verification_token || !payload.dic) {
+      console.warn(`[PFS Webhook] Missing required fields. correlationId=${correlationId}, hasDic=${!!payload.dic}, hasToken=${!!payload.verification_token}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -141,6 +152,7 @@ export async function POST(request: Request) {
 
     // Validate DIC format (exactly 10 digits, no SK prefix)
     if (!isValidDic(payload.dic)) {
+      console.warn(`[PFS Webhook] Invalid DIC format: "${payload.dic}". correlationId=${correlationId}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -157,6 +169,7 @@ export async function POST(request: Request) {
     }
 
     const adminClient = createAdminClient()
+    console.log(`[PFS Webhook] Checking idempotency for token=${payload.verification_token}`)
 
     // Check for idempotency - skip if verification token already exists
     const { data: existingByToken } = await adminClient
@@ -166,6 +179,7 @@ export async function POST(request: Request) {
       .single()
 
     if (existingByToken) {
+      console.log(`[PFS Webhook] Duplicate token found, already processed. companyId=${existingByToken.id}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -189,6 +203,7 @@ export async function POST(request: Request) {
       })
     }
 
+    console.log(`[PFS Webhook] Checking if DIC=${payload.dic} already exists`)
     // Check if company with this DIC already exists
     const { data: existingByDic } = await adminClient
       .from("companies")
@@ -197,6 +212,7 @@ export async function POST(request: Request) {
       .single()
 
     if (existingByDic) {
+      console.log(`[PFS Webhook] Existing company found by DIC: companyId=${existingByDic.id}, status=${existingByDic.status}`)
       // Update existing company with verification token and contact info
       const updateFields: Record<string, unknown> = {}
       if (!existingByDic.pfsVerificationToken) {
@@ -207,6 +223,7 @@ export async function POST(request: Request) {
       if (payload.company_phone) updateFields.adminPhone = payload.company_phone
 
       if (Object.keys(updateFields).length > 0) {
+        console.log(`[PFS Webhook] Updating existing company ${existingByDic.id} with fields:`, JSON.stringify(updateFields))
         await adminClient
           .from("companies")
           .update(updateFields)
@@ -232,8 +249,9 @@ export async function POST(request: Request) {
       }
 
       // Trigger ION AP sync (fire-and-forget, don't block webhook response)
+      console.log(`[PFS Webhook] Triggering ION AP sync for existing company=${existingByDic.id}`)
       syncCompanyToIonAp(existingByDic.id).catch((err) =>
-        console.error("ION AP sync failed for existing company:", err)
+        console.error(`[PFS Webhook] ION AP sync failed for existing company=${existingByDic.id}:`, err)
       )
 
       return NextResponse.json({
@@ -243,6 +261,7 @@ export async function POST(request: Request) {
       })
     }
 
+    console.log(`[PFS Webhook] Creating new draft company: dic=${payload.dic}, legalName=${payload.legalName}`)
     // Create new draft company
     const { data: newCompany, error: insertError } = await adminClient
       .from("companies")
@@ -259,6 +278,7 @@ export async function POST(request: Request) {
       .single()
 
     if (insertError) {
+      console.error(`[PFS Webhook] DB insert failed: ${insertError.message}. correlationId=${correlationId}`)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -292,9 +312,12 @@ export async function POST(request: Request) {
       },
     })
 
+    console.log(`[PFS Webhook] Draft company created: companyId=${newCompany.id}, dic=${payload.dic}`)
+
     // Trigger ION AP registration (fire-and-forget, don't block webhook response)
+    console.log(`[PFS Webhook] Triggering ION AP sync for new company=${newCompany.id}`)
     syncCompanyToIonAp(newCompany.id).catch((err) =>
-      console.error("ION AP sync failed for new company:", err)
+      console.error(`[PFS Webhook] ION AP sync failed for new company=${newCompany.id}:`, err)
     )
 
     return NextResponse.json({
@@ -304,6 +327,7 @@ export async function POST(request: Request) {
     }, { status: 201 })
 
   } catch (error) {
+    console.error(`[PFS Webhook] Unexpected error. correlationId=${correlationId}`, error instanceof Error ? error.message : error)
     await logAuditEvent({
       userId: null,
       action: "webhook.pfs.verification",

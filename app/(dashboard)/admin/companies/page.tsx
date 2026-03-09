@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, Plus, Pencil, Trash2, Search, CheckCircle, RefreshCw, Cloud, CloudOff, Loader2 } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, Search, CheckCircle, RefreshCw, Cloud, CloudOff, Loader2, RotateCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,20 +45,24 @@ export default function AdminCompaniesPage() {
   const [deleting, setDeleting] = useState<Company | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [form, setForm] = useState({
     dic: "",
     legalName: "",
     adminEmail: "",
+    adminPhone: "",
     accessPointProviderId: "",
     pfsVerificationToken: "",
     status: "active" as CompanyStatus,
   })
 
-  const fetchCompanies = useCallback(async () => {
+  const fetchCompanies = useCallback(async (showRefresh = false) => {
+    if (showRefresh) setRefreshing(true)
     const res = await fetch("/api/admin/companies")
     const json = await res.json()
     setCompanies(json.data || [])
     setLoading(false)
+    if (showRefresh) setRefreshing(false)
   }, [])
 
   useEffect(() => {
@@ -80,10 +84,11 @@ export default function AdminCompaniesPage() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ 
-      dic: "", 
-      legalName: "", 
-      adminEmail: "", 
+    setForm({
+      dic: "",
+      legalName: "",
+      adminEmail: "",
+      adminPhone: "",
       accessPointProviderId: "",
       pfsVerificationToken: "",
       status: "active",
@@ -97,6 +102,7 @@ export default function AdminCompaniesPage() {
       dic: company.dic,
       legalName: company.legalName || "",
       adminEmail: company.adminEmail || "",
+      adminPhone: company.adminPhone || "",
       accessPointProviderId: company.accessPointProviderId || "",
       pfsVerificationToken: company.pfsVerificationToken || "",
       status: (company.status as CompanyStatus) || "active",
@@ -104,7 +110,7 @@ export default function AdminCompaniesPage() {
     setDialogOpen(true)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setSubmitting(true)
 
@@ -114,9 +120,10 @@ export default function AdminCompaniesPage() {
     const method = editing ? "PUT" : "POST"
 
     const payload = editing
-      ? { 
-          legalName: form.legalName, 
-          adminEmail: form.adminEmail, 
+      ? {
+          legalName: form.legalName,
+          adminEmail: form.adminEmail,
+          adminPhone: form.adminPhone,
           accessPointProviderId: form.accessPointProviderId,
           pfsVerificationToken: form.pfsVerificationToken,
           status: form.status,
@@ -172,11 +179,57 @@ export default function AdminCompaniesPage() {
       const res = await fetch(`/api/admin/companies/${company.id}/ion-ap-sync`, {
         method: "POST",
       })
-      if (res.ok) {
-        fetchCompanies()
+      const json = await res.json()
+      if (!res.ok) {
+        alert(`ION AP sync zlyhalo: ${json.error || "Neznama chyba"}`)
+      }
+      fetchCompanies()
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  async function handleSaveAndResubmit() {
+    if (!editing) return
+    setSubmitting(true)
+
+    // First save the company data
+    const payload = {
+      legalName: form.legalName,
+      adminEmail: form.adminEmail,
+      adminPhone: form.adminPhone,
+      accessPointProviderId: form.accessPointProviderId,
+      pfsVerificationToken: form.pfsVerificationToken,
+      status: form.status,
+    }
+
+    const res = await fetch(`/api/admin/companies/${editing.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      setSubmitting(false)
+      return
+    }
+
+    setDialogOpen(false)
+
+    // Then trigger ION AP sync
+    setSyncingId(editing.id)
+    try {
+      const syncRes = await fetch(`/api/admin/companies/${editing.id}/ion-ap-sync`, {
+        method: "POST",
+      })
+      const json = await syncRes.json()
+      if (!syncRes.ok) {
+        alert(`ION AP sync zlyhalo: ${json.error || "Neznama chyba"}`)
       }
     } finally {
       setSyncingId(null)
+      setSubmitting(false)
+      fetchCompanies()
     }
   }
 
@@ -249,10 +302,21 @@ export default function AdminCompaniesPage() {
             </Badge>
           )}
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} className="mr-2" />
-          Pridat spolocnost
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fetchCompanies(true)}
+            disabled={refreshing}
+            title="Obnovit zoznam"
+          >
+            <RotateCw size={16} className={refreshing ? "animate-spin" : ""} />
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus size={16} className="mr-2" />
+            Pridat spolocnost
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-4 items-center">
@@ -268,7 +332,7 @@ export default function AdminCompaniesPage() {
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+        <Select value={statusFilter} onValueChange={(v: string) => setStatusFilter(v as typeof statusFilter)}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Vsetky statusy" />
           </SelectTrigger>
@@ -420,6 +484,18 @@ export default function AdminCompaniesPage() {
               />
             </div>
             <div>
+              <Label htmlFor="adminPhone">Admin telefon</Label>
+              <Input
+                id="adminPhone"
+                type="tel"
+                value={form.adminPhone}
+                onChange={(e) =>
+                  setForm({ ...form, adminPhone: e.target.value })
+                }
+                placeholder="+421..."
+              />
+            </div>
+            <div>
               <Label htmlFor="pfsVerificationToken">PFS Verifikacny token</Label>
               <Input
                 id="pfsVerificationToken"
@@ -432,7 +508,7 @@ export default function AdminCompaniesPage() {
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as CompanyStatus })}>
+              <Select value={form.status} onValueChange={(v: string) => setForm({ ...form, status: v as CompanyStatus })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -443,7 +519,25 @@ export default function AdminCompaniesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <DialogFooter>
+            {editing && editing.ionApStatus === "failed" && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                <p className="font-medium">ION AP registracia zlyhala</p>
+                <p className="text-xs mt-1 text-red-600">{editing.ionApError}</p>
+              </div>
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              {editing && (editing.ionApStatus === "failed" || editing.ionApStatus === "pending") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={handleSaveAndResubmit}
+                  className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                >
+                  <Cloud size={14} className="mr-2" />
+                  {submitting ? "Ukladam..." : "Ulozit a odoslat do ION AP"}
+                </Button>
+              )}
               <Button type="submit" disabled={submitting}>
                 {submitting
                   ? "Ukladam..."
