@@ -75,9 +75,15 @@ export async function PUT(
     )
   }
 
+  // Build update object, handling isActive based on status
+  const updateData: Record<string, unknown> = { ...result.data }
+  if (result.data.status) {
+    updateData.isActive = result.data.status !== "draft"
+  }
+
   const { data, error } = await auth.supabase
     .from("companies")
-    .update(result.data)
+    .update(updateData)
     .eq("id", id)
     .select()
     .single()

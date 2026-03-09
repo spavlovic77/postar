@@ -23,23 +23,25 @@ export const sendDocumentSchema = z.object({
 })
 
 export const companySchema = z.object({
-  name: z.string().min(2, "Názov spoločnosti je povinný"),
   dic: z
     .string()
     .regex(
-      /^SK\d{10}$/,
-      "Neplatný formát DIČ (musí byť SK a 10 číslic)"
+      /^\d{10}$/,
+      "Neplatný formát DIČ (musí byť presne 10 číslic, bez SK prefixu)"
     ),
   legalName: z.string().min(2, "Obchodné meno je povinné"),
   adminEmail: z.string().email("Neplatná e-mailová adresa").optional().or(z.literal("")),
   accessPointProviderId: z.string().uuid("Neplatný prístupový bod").optional().or(z.literal("")),
+  pfsVerificationToken: z.string().optional().or(z.literal("")),
+  status: z.enum(["draft", "active", "suspended"]).optional(),
 })
 
 export const companyUpdateSchema = z.object({
-  name: z.string().min(2, "Názov spoločnosti je povinný").optional(),
   legalName: z.string().min(2, "Obchodné meno je povinné").optional(),
   adminEmail: z.string().email("Neplatná e-mailová adresa").optional().or(z.literal("")),
   accessPointProviderId: z.string().uuid("Neplatný prístupový bod").optional().or(z.literal("")),
+  pfsVerificationToken: z.string().optional().or(z.literal("")),
+  status: z.enum(["draft", "active", "suspended"]).optional(),
 })
 
 export const accessPointSchema = z.object({

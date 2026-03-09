@@ -104,14 +104,15 @@ CREATE TABLE IF NOT EXISTS public."userRoles" (
 -- Companies Table
 CREATE TABLE IF NOT EXISTS public.companies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
   dic text NOT NULL UNIQUE,
-  address text,
-  city text,
-  "postalCode" text,
-  country text DEFAULT 'SK',
-  "isActive" boolean DEFAULT true,
+  "legalName" text,
+  "adminEmail" text,
+  "peppolParticipantId" text,
+  "accessPointProviderId" uuid REFERENCES public."accessPointProviders"(id),
   "createdById" uuid REFERENCES auth.users(id),
+  "isActive" boolean DEFAULT true,
+  status text DEFAULT 'active' CHECK (status IN ('draft', 'active', 'suspended')),
+  "pfsVerificationToken" text,
   "createdAt" timestamptz DEFAULT now(),
   "updatedAt" timestamptz DEFAULT now()
 );

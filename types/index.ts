@@ -34,15 +34,18 @@ export interface DeactivationRequest {
   createdAt: string
 }
 
+export type CompanyStatus = "draft" | "active" | "suspended"
+
 export interface Company {
   id: string
-  name: string
   dic: string
   legalName: string | null
   adminEmail: string | null
-  peppolParticipantId: string
+  peppolParticipantId: string | null
   accessPointProviderId: string | null
   isActive: boolean
+  status: CompanyStatus
+  pfsVerificationToken: string | null
   createdById: string | null
   createdAt: string
   updatedAt: string

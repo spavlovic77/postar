@@ -50,9 +50,21 @@ export async function POST(request: Request) {
     )
   }
 
+  // Set defaults for new companies
+  const companyData = {
+    dic: result.data.dic,
+    legalName: result.data.legalName,
+    adminEmail: result.data.adminEmail || null,
+    accessPointProviderId: result.data.accessPointProviderId || null,
+    pfsVerificationToken: result.data.pfsVerificationToken || null,
+    status: result.data.status || "active",
+    isActive: result.data.status !== "draft",
+    createdById: user.id,
+  }
+
   const { data, error } = await supabase
     .from("companies")
-    .insert({ ...result.data, createdById: user.id })
+    .insert(companyData)
     .select()
     .single()
 

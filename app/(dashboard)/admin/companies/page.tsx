@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, Plus, Pencil, Trash2, Search } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, Search, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,24 +22,35 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EmptyState } from "@/components/feedback/emptyState"
 import type { Company } from "@/types"
+
+type CompanyStatus = "draft" | "active" | "suspended"
 
 export default function AdminCompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | CompanyStatus>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Company | null>(null)
   const [deleting, setDeleting] = useState<Company | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({
-    name: "",
     dic: "",
     legalName: "",
     adminEmail: "",
     accessPointProviderId: "",
+    pfsVerificationToken: "",
+    status: "active" as CompanyStatus,
   })
 
   const fetchCompanies = useCallback(async () => {
@@ -53,27 +64,41 @@ export default function AdminCompaniesPage() {
     fetchCompanies()
   }, [fetchCompanies])
 
-  const filtered = companies.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
+  const filtered = companies.filter((c) => {
+    const matchesSearch =
       c.dic.toLowerCase().includes(search.toLowerCase()) ||
       (c.legalName || "").toLowerCase().includes(search.toLowerCase())
-  )
+    
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter
+    
+    return matchesSearch && matchesStatus
+  })
+
+  // Count draft companies for badge
+  const draftCount = companies.filter(c => c.status === "draft").length
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: "", dic: "", legalName: "", adminEmail: "", accessPointProviderId: "" })
+    setForm({ 
+      dic: "", 
+      legalName: "", 
+      adminEmail: "", 
+      accessPointProviderId: "",
+      pfsVerificationToken: "",
+      status: "active",
+    })
     setDialogOpen(true)
   }
 
   function openEdit(company: Company) {
     setEditing(company)
     setForm({
-      name: company.name,
       dic: company.dic,
       legalName: company.legalName || "",
       adminEmail: company.adminEmail || "",
       accessPointProviderId: company.accessPointProviderId || "",
+      pfsVerificationToken: company.pfsVerificationToken || "",
+      status: (company.status as CompanyStatus) || "active",
     })
     setDialogOpen(true)
   }
@@ -88,7 +113,13 @@ export default function AdminCompaniesPage() {
     const method = editing ? "PUT" : "POST"
 
     const payload = editing
-      ? { name: form.name, legalName: form.legalName, adminEmail: form.adminEmail, accessPointProviderId: form.accessPointProviderId }
+      ? { 
+          legalName: form.legalName, 
+          adminEmail: form.adminEmail, 
+          accessPointProviderId: form.accessPointProviderId,
+          pfsVerificationToken: form.pfsVerificationToken,
+          status: form.status,
+        }
       : form
 
     const res = await fetch(url, {
@@ -122,6 +153,31 @@ export default function AdminCompaniesPage() {
     setSubmitting(false)
   }
 
+  async function activateCompany(company: Company) {
+    const res = await fetch(`/api/admin/companies/${company.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    })
+
+    if (res.ok) {
+      fetchCompanies()
+    }
+  }
+
+  function getStatusBadge(status: string | undefined) {
+    switch (status) {
+      case "draft":
+        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Koncept</Badge>
+      case "active":
+        return <Badge variant="default" className="bg-green-50 text-green-700 border-green-200">Aktivna</Badge>
+      case "suspended":
+        return <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200">Pozastavena</Badge>
+      default:
+        return <Badge variant="secondary">Neznamy</Badge>
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
@@ -130,6 +186,11 @@ export default function AdminCompaniesPage() {
           <h1 className="text-2xl font-semibold text-foreground">
             Spolocnosti
           </h1>
+          {draftCount > 0 && (
+            <Badge variant="outline" className="bg-amber-50 text-amber-700">
+              {draftCount} na dokoncenie
+            </Badge>
+          )}
         </div>
         <Button onClick={openCreate}>
           <Plus size={16} className="mr-2" />
@@ -137,17 +198,30 @@ export default function AdminCompaniesPage() {
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search
-          size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          placeholder="Hladat podla nazvu alebo DIC..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex gap-4 items-center">
+        <div className="relative max-w-sm flex-1">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            placeholder="Hladat podla DIC alebo obchodneho mena..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Vsetky statusy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Vsetky statusy</SelectItem>
+            <SelectItem value="draft">Koncept</SelectItem>
+            <SelectItem value="active">Aktivne</SelectItem>
+            <SelectItem value="suspended">Pozastavene</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -159,26 +233,40 @@ export default function AdminCompaniesPage() {
               <TableRow>
                 <TableHead>DIC</TableHead>
                 <TableHead>Obchodne meno</TableHead>
-                <TableHead>Nazov</TableHead>
                 <TableHead>Admin e-mail</TableHead>
+                <TableHead>PFS Token</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-[100px]">Akcie</TableHead>
+                <TableHead className="w-[140px]">Akcie</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((company) => (
-                <TableRow key={company.id}>
+                <TableRow key={company.id} className={company.status === "draft" ? "bg-amber-50/50" : ""}>
                   <TableCell className="font-mono">{company.dic}</TableCell>
-                  <TableCell>{company.legalName || "—"}</TableCell>
-                  <TableCell>{company.name}</TableCell>
+                  <TableCell>{company.legalName || <span className="text-muted-foreground italic">Nevyplnene</span>}</TableCell>
                   <TableCell>{company.adminEmail || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={company.isActive ? "success" : "secondary"}>
-                      {company.isActive ? "Aktivna" : "Neaktivna"}
-                    </Badge>
+                    {company.pfsVerificationToken ? (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {company.pfsVerificationToken.substring(0, 12)}...
+                      </span>
+                    ) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {getStatusBadge(company.status)}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      {company.status === "draft" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Aktivovat spolocnost"
+                          onClick={() => openEdit(company)}
+                        >
+                          <CheckCircle size={14} className="text-green-600" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -220,7 +308,9 @@ export default function AdminCompaniesPage() {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Upravte udaje spolocnosti."
+                ? editing.status === "draft" 
+                  ? "Dokoncite registraciu spolocnosti vyplnenim udajov."
+                  : "Upravte udaje spolocnosti."
                 : "Vyplnte udaje novej spolocnosti."}
             </DialogDescription>
           </DialogHeader>
@@ -230,11 +320,20 @@ export default function AdminCompaniesPage() {
                 <Label htmlFor="dic">DIC</Label>
                 <Input
                   id="dic"
-                  placeholder="SK1234567890"
+                  placeholder="2020123456"
                   value={form.dic}
                   onChange={(e) => setForm({ ...form, dic: e.target.value })}
                   required
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Presne 10 cislic, bez SK prefixu
+                </p>
+              </div>
+            )}
+            {editing && (
+              <div>
+                <Label>DIC</Label>
+                <p className="font-mono text-sm py-2">{form.dic}</p>
               </div>
             )}
             <div>
@@ -249,15 +348,6 @@ export default function AdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="name">Zobrazovany nazov</Label>
-              <Input
-                id="name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-            </div>
-            <div>
               <Label htmlFor="adminEmail">Admin e-mail</Label>
               <Input
                 id="adminEmail"
@@ -267,6 +357,30 @@ export default function AdminCompaniesPage() {
                   setForm({ ...form, adminEmail: e.target.value })
                 }
               />
+            </div>
+            <div>
+              <Label htmlFor="pfsVerificationToken">PFS Verifikacny token</Label>
+              <Input
+                id="pfsVerificationToken"
+                value={form.pfsVerificationToken}
+                onChange={(e) =>
+                  setForm({ ...form, pfsVerificationToken: e.target.value })
+                }
+                placeholder="Automaticky z webhooku alebo zadajte manualne"
+              />
+            </div>
+            <div>
+              <Label htmlFor="status">Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as CompanyStatus })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Koncept</SelectItem>
+                  <SelectItem value="active">Aktivna</SelectItem>
+                  <SelectItem value="suspended">Pozastavena</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={submitting}>
@@ -288,7 +402,7 @@ export default function AdminCompaniesPage() {
             <DialogTitle>Vymazat spolocnost</DialogTitle>
             <DialogDescription>
               Naozaj chcete vymazat spolocnost{" "}
-              <strong>{deleting?.name}</strong>? Tato akcia sa neda vratit.
+              <strong>{deleting?.legalName || deleting?.dic}</strong>? Tato akcia sa neda vratit.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
