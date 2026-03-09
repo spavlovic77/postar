@@ -47,7 +47,7 @@ export async function lookupByDic(dic: string): Promise<RuzCompanyData | null> {
   
   const searchRes = await fetch(searchUrl, {
     headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(30000), // 30 seconds - RUZ API can be slow
   })
 
   console.log("[v0] RUZ search response status:", searchRes.status)
@@ -73,7 +73,7 @@ export async function lookupByDic(dic: string): Promise<RuzCompanyData | null> {
   
   const detailRes = await fetch(detailUrl, {
     headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(30000), // 30 seconds - RUZ API can be slow
   })
 
   console.log("[v0] RUZ detail response status:", detailRes.status)
