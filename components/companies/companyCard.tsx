@@ -16,8 +16,8 @@ export function CompanyCard({ company }: CompanyCardProps) {
             <Building2 size={20} className="text-primary" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">{company.name}</h3>
-            <p className="text-sm text-muted-foreground">{company.dic}</p>
+            <h3 className="font-semibold text-foreground">{company.legalName || company.dic}</h3>
+            <p className="text-sm text-muted-foreground">DIČ: {company.dic}</p>
           </div>
         </div>
         <Badge variant={company.isActive ? "success" : "secondary"}>
