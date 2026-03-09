@@ -38,7 +38,7 @@ export function CompanySelector() {
               className="shrink-0 text-muted-foreground"
             />
             <span className="truncate">
-              {selectedCompany?.name ?? "Vyberte spoločnosť"}
+              {selectedCompany?.legalName ?? selectedCompany?.dic ?? "Vyberte spoločnosť"}
             </span>
           </div>
           <ChevronsUpDown size={16} className="shrink-0 opacity-50" />
@@ -53,7 +53,7 @@ export function CompanySelector() {
               {companies.map((company) => (
                 <CommandItem
                   key={company.id}
-                  value={company.name}
+                  value={company.legalName || company.dic}
                   onSelect={() => {
                     setSelectedCompany(company)
                     setOpen(false)
@@ -69,9 +69,9 @@ export function CompanySelector() {
                     )}
                   />
                   <div className="flex flex-col">
-                    <span>{company.name}</span>
+                    <span>{company.legalName || company.dic}</span>
                     <span className="text-xs text-muted-foreground">
-                      {company.dic}
+                      DIČ: {company.dic}
                     </span>
                   </div>
                 </CommandItem>
