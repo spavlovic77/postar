@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { inviteUserSchema } from "@/lib/validations/user"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import { getUserRole, canInviteRole, canAssignCompanies } from "@/lib/auth/permissions"
+import { checkRateLimit, RATE_LIMITS, getClientIP, rateLimitHeaders } from "@/lib/rate-limit"
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
@@ -87,12 +88,19 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const correlationId = crypto.randomUUID()
-  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
+  const ip = getClientIP(request)
   const userAgent = request.headers.get("user-agent") ?? ""
 
+  // Rate limiting
+  const rateLimitResult = await checkRateLimit(ip, RATE_LIMITS.invitation)
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "Príliš veľa pokusov. Skúste to neskôr." },
+      { status: 429, headers: rateLimitHeaders(rateLimitResult) }
+    )
+  }
+
   try {
-    console.log("[v0] POST /api/invitations - starting")
-    
     const supabase = await createClient()
     const adminClient = createAdminClient()
 

@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import { checkRateLimit, RATE_LIMITS, getClientIP, rateLimitHeaders } from "@/lib/rate-limit"
 import crypto from "crypto"
 
 export async function POST(request: Request) {
+  const ip = getClientIP(request)
+  
+  // Rate limiting
+  const rateLimitResult = await checkRateLimit(ip, RATE_LIMITS.passwordReset)
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "Príliš veľa pokusov. Skúste to neskôr." },
+      { status: 429, headers: rateLimitHeaders(rateLimitResult) }
+    )
+  }
+
   const supabase = await createClient()
   const {
     data: { user },
