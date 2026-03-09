@@ -3,23 +3,21 @@
  *
  * Strategy:
  * 1. Always try inviteUserByEmail first — works for new users and
- *    unconfirmed existing users (re-sends the invite).
+ *    unconfirmed existing users (re-sends the invite via Supabase SMTP).
  * 2. If it fails (confirmed existing user), fall back to generateLink
- *    (type: magiclink) to get the action URL. generateLink does NOT
- *    send email, so we return the link for the caller to handle
- *    (e.g., store it, show it to superAdmin).
+ *    (type: magiclink) to get the action URL, then send the email
+ *    ourselves via SMTP (nodemailer).
  *
  * NOTE: signInWithOtp does NOT work on the service-role client
  *       (returns unexpected_failure), so we avoid it entirely.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { sendEmail, buildInvitationEmailHtml } from "@/lib/email/sendEmail"
 
 export interface SendInvitationResult {
   success: boolean
-  method: "inviteUserByEmail" | "generateLink"
-  /** Magic link URL — only set when generateLink fallback is used (email NOT sent) */
-  magicLink?: string
+  method: "inviteUserByEmail" | "generateLink+smtp"
   error?: string
 }
 
@@ -27,7 +25,8 @@ export async function sendInvitationEmail(
   adminClient: SupabaseClient,
   email: string,
   redirectUrl: string,
-  logPrefix: string
+  logPrefix: string,
+  companyName?: string
 ): Promise<SendInvitationResult> {
   // Step 1: Try inviteUserByEmail (works for new users + unconfirmed existing)
   console.log(`${logPrefix} Attempting inviteUserByEmail for ${email}`)
@@ -48,8 +47,8 @@ export async function sendInvitationEmail(
   }
 
   // Step 2: inviteUserByEmail failed (likely "already registered" for confirmed user)
-  // Fall back to generateLink to get magic link URL
-  console.warn(`${logPrefix} inviteUserByEmail failed: ${inviteError.message}. Falling back to generateLink...`)
+  // Fall back to generateLink + send email ourselves via SMTP
+  console.warn(`${logPrefix} inviteUserByEmail failed: ${inviteError.message}. Falling back to generateLink + SMTP...`)
 
   const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
     type: "magiclink",
@@ -69,11 +68,24 @@ export async function sendInvitationEmail(
   if (linkError || !actionLink) {
     const errorMsg = linkError?.message || "generateLink returned no action_link"
     console.error(`${logPrefix} generateLink FAILED for ${email}: ${errorMsg}`)
-    return { success: false, method: "generateLink", error: errorMsg }
+    return { success: false, method: "generateLink+smtp", error: errorMsg }
   }
 
-  // generateLink succeeded — link is available but email was NOT sent
-  console.log(`${logPrefix} generateLink SUCCESS for ${email} — magic link generated (email NOT sent by Supabase, link available for manual sharing)`)
+  // Step 3: Send the magic link email via SMTP
+  console.log(`${logPrefix} generateLink SUCCESS — sending email via SMTP to ${email}`)
 
-  return { success: true, method: "generateLink", magicLink: actionLink }
+  const html = buildInvitationEmailHtml(actionLink, companyName)
+  const emailResult = await sendEmail({
+    to: email,
+    subject: "Pozvánka na Postar",
+    html,
+  })
+
+  if (!emailResult.success) {
+    console.error(`${logPrefix} SMTP send FAILED for ${email}: ${emailResult.error}`)
+    return { success: false, method: "generateLink+smtp", error: `Email send failed: ${emailResult.error}` }
+  }
+
+  console.log(`${logPrefix} generateLink + SMTP SUCCESS — email delivered to ${email}`)
+  return { success: true, method: "generateLink+smtp" }
 }

@@ -145,16 +145,12 @@ export async function autoInviteAdministrator(companyId: string): Promise<AutoIn
       supabase,
       company.adminEmail!,
       redirectUrl,
-      `[Auto Invite] [DIC=${dic}]`
+      `[Auto Invite] [DIC=${dic}]`,
+      company.legalName || undefined
     )
 
     if (!emailResult.success) {
       throw new Error(`Failed to send invitation email: ${emailResult.error}`)
-    }
-
-    if (emailResult.magicLink) {
-      // generateLink fallback was used — email was NOT sent by Supabase
-      console.log(`[Auto Invite] [DIC=${dic}] Magic link generated (email not sent). Link must be shared manually.`)
     }
 
     // Mark success
