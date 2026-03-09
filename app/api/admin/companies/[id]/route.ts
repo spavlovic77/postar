@@ -75,8 +75,17 @@ export async function PUT(
     )
   }
 
-  // Build update object, handling isActive based on status
+  // Build update object, converting empty strings to null for nullable fields
   const updateData: Record<string, unknown> = { ...result.data }
+
+  // Empty strings → null for optional/nullable fields
+  const nullableFields = ["adminEmail", "adminPhone", "accessPointProviderId", "pfsVerificationToken"]
+  for (const field of nullableFields) {
+    if (updateData[field] === "") {
+      updateData[field] = null
+    }
+  }
+
   if (result.data.status) {
     updateData.isActive = result.data.status !== "draft"
   }
