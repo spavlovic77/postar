@@ -169,43 +169,60 @@ export async function POST(request: Request) {
   console.log("[v0] Existing user check:", { exists: !!existingUser, userId: existingUser?.id })
 
   if (existingUser) {
-    // User already exists - send magic link instead of invite
-    console.log("[v0] User exists, generating magic link...")
-    const { data: magicLinkData, error: magicLinkError } = await adminClient.auth.admin.generateLink({
-      type: "magiclink",
+    // User already exists - use generateLink with type "invite" which sends an email
+    // Note: "magiclink" type in generateLink does NOT send emails, it just generates the link
+    // We need to use type "invite" for existing users to resend the invite email
+    console.log("[v0] User exists, using generateLink with type 'invite'...")
+    
+    const { data: inviteLinkData, error: inviteLinkError } = await adminClient.auth.admin.generateLink({
+      type: "invite",
       email: result.data.email,
       options: {
         redirectTo: redirectUrl,
       },
     })
 
-    console.log("[v0] generateLink result:", { 
-      hasData: !!magicLinkData, 
-      actionLink: magicLinkData?.properties?.action_link?.substring(0, 100) + "...",
-      error: magicLinkError?.message 
+    console.log("[v0] generateLink (invite) result:", { 
+      hasData: !!inviteLinkData, 
+      actionLink: inviteLinkData?.properties?.action_link?.substring(0, 100) + "...",
+      error: inviteLinkError?.message 
     })
 
-    if (magicLinkError || !magicLinkData) {
+    if (inviteLinkError || !inviteLinkData) {
       await adminClient.from("invitations").delete().eq("id", invitation.id)
-      console.error("[v0] Failed to generate magic link - rolling back invitation:", magicLinkError)
+      console.error("[v0] Failed to generate invite link for existing user - rolling back invitation:", inviteLinkError)
       return NextResponse.json(
         { error: "Failed to generate invitation link" },
         { status: 500 }
       )
     }
 
-    // For existing users, we need to send the email manually or use a different approach
-    // The magic link is in magicLinkData.properties.action_link
-    // For now, we'll use signInWithOtp which sends the email automatically
-    // But we need to do this from the client side or use a custom email solution
+    // generateLink with type "invite" generates the link but doesn't send email
+    // We need to use the Supabase Auth Hooks or send email manually
+    // For now, let's try using the regular auth client to send OTP
+    // This will send the magic link email to the existing user
     
-    // Alternative: Use the action_link directly - it contains the magic link
-    // We could send this via a custom email service, but for now let's try 
-    // using the admin generateLink which should work for existing users
+    console.log("[v0] Sending magic link email to existing user...")
+    const { error: otpError } = await adminClient.auth.signInWithOtp({
+      email: result.data.email,
+      options: {
+        shouldCreateUser: false, // User already exists
+        emailRedirectTo: redirectUrl,
+      },
+    })
+
+    console.log("[v0] signInWithOtp result:", { error: otpError?.message })
+
+    if (otpError) {
+      await adminClient.from("invitations").delete().eq("id", invitation.id)
+      console.error("[v0] Failed to send OTP email - rolling back invitation:", otpError)
+      return NextResponse.json(
+        { error: "Failed to send invitation email" },
+        { status: 500 }
+      )
+    }
     
-    console.log("[v0] Magic link generated for existing user. Link will be sent via email.")
-    // The generateLink for existing users should have sent the email automatically
-    // If not, we may need to implement custom email sending
+    console.log("[v0] Magic link email sent to existing user successfully")
     
   } else {
     // New user - use inviteUserByEmail
