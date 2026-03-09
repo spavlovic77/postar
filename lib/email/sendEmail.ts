@@ -31,6 +31,13 @@ function getTransporter(): nodemailer.Transporter {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      tls: {
+        // WebSupport and some providers need this for SSL on port 465
+        rejectUnauthorized: true,
+        minVersion: "TLSv1.2",
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
     })
   }
   return _transporter
