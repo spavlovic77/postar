@@ -37,6 +37,15 @@ export async function GET(
     )
   }
 
+  // Verify the authenticated user matches the invitation email
+  if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+    console.error(`[Invitation] Email mismatch: authenticated as ${user.email}, but invitation is for ${invitation.email}`)
+    return NextResponse.json(
+      { error: "This invitation was sent to a different email address" },
+      { status: 403 }
+    )
+  }
+
   if (new Date(invitation.expiresAt) < new Date()) {
     await adminClient
       .from("invitations")

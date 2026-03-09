@@ -19,9 +19,12 @@ export default function AuthCallbackPage() {
       const invitationToken = searchParams.get("invitation_token")
       
       if (code) {
+        // Sign out any existing session first to ensure clean session switch
+        await supabase.auth.signOut()
+
         // Exchange the code for a session
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-        
+
         if (exchangeError) {
           setStatus("error")
           setErrorMsg(`Nepodarilo sa overiť odkaz: ${exchangeError.message}`)
