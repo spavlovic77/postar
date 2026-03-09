@@ -4,6 +4,7 @@ import { inviteUserSchema } from "@/lib/validations/user"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import { getUserRole, canInviteRole, canAssignCompanies } from "@/lib/auth/permissions"
 import { checkRateLimit, RATE_LIMITS, getClientIP, rateLimitHeaders } from "@/lib/rate-limit"
+import { sendInvitationEmail } from "@/lib/auth/sendInvitationEmail"
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
@@ -185,56 +186,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: invError.message }, { status: 500 })
     }
 
-    // Send invitation via Admin API
+    // Send invitation email
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"
     const redirectUrl = `${baseUrl}/auth/callback?invitation_token=${token}`
 
-    // Check if user already exists in Supabase Auth
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers()
-    const existingUser = existingUsers?.users?.find(u => u.email === result.data.email)
+    const emailResult = await sendInvitationEmail(
+      adminClient,
+      result.data.email,
+      redirectUrl,
+      "[Invitation]"
+    )
 
-    console.log(`[Invitation] User lookup for ${result.data.email}: existingUser=${existingUser ? `yes (id=${existingUser.id})` : "no"}, method=${existingUser ? "signInWithOtp" : "inviteUserByEmail"}`)
-    console.log(`[Invitation] Redirect URL: ${redirectUrl}`)
-
-    if (existingUser) {
-      // User already exists - send magic link via signInWithOtp
-      const { data: otpData, error: otpError } = await adminClient.auth.signInWithOtp({
-        email: result.data.email,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: redirectUrl,
-        },
-      })
-
-      console.log(`[Invitation] signInWithOtp response:`, JSON.stringify({ data: otpData, error: otpError }))
-
-      if (otpError) {
-        console.error(`[Invitation] signInWithOtp FAILED for ${result.data.email}:`, otpError.message)
-        await adminClient.from("invitations").delete().eq("id", invitation.id)
-        return NextResponse.json(
-          { error: "Failed to send invitation email: " + otpError.message },
-          { status: 500 }
-        )
-      }
-    } else {
-      // New user - use inviteUserByEmail
-      const { data: inviteData, error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
-        redirectTo: redirectUrl,
-      })
-
-      console.log(`[Invitation] inviteUserByEmail response:`, JSON.stringify({ data: inviteData, error: emailError }))
-
-      if (emailError) {
-        console.error(`[Invitation] inviteUserByEmail FAILED for ${result.data.email}:`, emailError.message)
-        await adminClient.from("invitations").delete().eq("id", invitation.id)
-        return NextResponse.json(
-          { error: "Failed to send invitation email" },
-          { status: 500 }
-        )
-      }
+    if (!emailResult.success) {
+      await adminClient.from("invitations").delete().eq("id", invitation.id)
+      return NextResponse.json(
+        { error: "Failed to send invitation email: " + emailResult.error },
+        { status: 500 }
+      )
     }
 
-    console.log(`[Invitation] Email sent successfully to ${result.data.email}, invitationId=${invitation.id}`)
+    console.log(`[Invitation] Email sent to ${result.data.email}, invitationId=${invitation.id}, method=${emailResult.method}`)
 
     // Fetch DICs for the assigned companies (for audit correlation)
     const companyIds = result.data.companyIds || []

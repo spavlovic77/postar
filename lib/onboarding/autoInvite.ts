@@ -8,6 +8,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logAuditEventAdmin } from "@/lib/sapiSk/auditLog"
+import { sendInvitationEmail } from "@/lib/auth/sendInvitationEmail"
 import crypto from "crypto"
 
 export interface AutoInviteResult {
@@ -136,41 +137,25 @@ export async function autoInviteAdministrator(companyId: string): Promise<AutoIn
 
     console.log(`[Auto Invite] [DIC=${dic}] Invitation created: id=${invitation.id}, token=${token}`)
 
-    // Send magic link
+    // Send invitation email
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectUrl = `${baseUrl}/auth/callback?invitation_token=${token}`
 
-    // Check if user already exists
-    const { data: existingUsers } = await supabase.auth.admin.listUsers()
-    const existingUser = existingUsers?.users?.find((u) => u.email === company.adminEmail)
+    const emailResult = await sendInvitationEmail(
+      supabase,
+      company.adminEmail!,
+      redirectUrl,
+      `[Auto Invite] [DIC=${dic}]`
+    )
 
-    console.log(`[Auto Invite] [DIC=${dic}] User lookup: existingUser=${existingUser ? `yes (id=${existingUser.id})` : "no"}, sending via ${existingUser ? "signInWithOtp" : "inviteUserByEmail"}`)
-    console.log(`[Auto Invite] [DIC=${dic}] Redirect URL: ${redirectUrl}`)
-
-    if (existingUser) {
-      const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
-        email: company.adminEmail!,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: redirectUrl,
-        },
-      })
-      console.log(`[Auto Invite] [DIC=${dic}] signInWithOtp response:`, JSON.stringify({ data: otpData, error: otpError }))
-      if (otpError) {
-        throw new Error(`Failed to send OTP: ${otpError.message}`)
-      }
-    } else {
-      const { data: inviteData, error: emailError } = await supabase.auth.admin.inviteUserByEmail(
-        company.adminEmail!,
-        { redirectTo: redirectUrl }
-      )
-      console.log(`[Auto Invite] [DIC=${dic}] inviteUserByEmail response:`, JSON.stringify({ data: inviteData, error: emailError }))
-      if (emailError) {
-        throw new Error(`Failed to send invitation email: ${emailError.message}`)
-      }
+    if (!emailResult.success) {
+      throw new Error(`Failed to send invitation email: ${emailResult.error}`)
     }
 
-    console.log(`[Auto Invite] [DIC=${dic}] Email sent successfully to ${company.adminEmail}`)
+    if (emailResult.magicLink) {
+      // generateLink fallback was used — email was NOT sent by Supabase
+      console.log(`[Auto Invite] [DIC=${dic}] Magic link generated (email not sent). Link must be shared manually.`)
+    }
 
     // Mark success
     await supabase
