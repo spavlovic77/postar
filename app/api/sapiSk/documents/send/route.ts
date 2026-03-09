@@ -5,7 +5,7 @@ import { SapiSkError } from "@/lib/sapiSk/errors"
 import { sendDocumentSchema } from "@/lib/validations/document"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import { ratelimit } from "@/lib/rateLimit"
-import { validateCSRFToken } from "@/lib/csrf"
+import { validateCSRFTokenSimple } from "@/lib/csrf"
 import {
   PEPPOL_DOCUMENT_TYPES,
   PEPPOL_PROCESS_ID,
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   const csrfToken = request.headers.get("x-csrf-token")
-  if (!csrfToken || !(await validateCSRFToken(csrfToken))) {
+  if (!csrfToken || !(await validateCSRFTokenSimple(csrfToken))) {
     return NextResponse.json(
       { error: "Invalid CSRF token" },
       { status: 403 }
