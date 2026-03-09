@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS public."userRoles" (
   "userId" uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role text NOT NULL CHECK (role IN ('superAdmin', 'administrator', 'accountant')),
   "isActive" boolean DEFAULT true,
+  "mfaEnabled" boolean DEFAULT false,
   "createdAt" timestamptz DEFAULT now(),
   "updatedAt" timestamptz DEFAULT now(),
   UNIQUE("userId")
@@ -191,21 +192,22 @@ CREATE TABLE IF NOT EXISTS public.mfa_challenges (
   UNIQUE("userId")
 );
 
--- Documents Table
+-- Documents Table (Peppol documents)
 CREATE TABLE IF NOT EXISTS public.documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "companyId" uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  "uploadedBy" uuid REFERENCES auth.users(id),
-  filename text NOT NULL,
-  "originalName" text,
-  "mimeType" text,
-  size integer,
-  path text,
-  status text DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')),
-  "sapiSkResponse" jsonb,
-  "sapiSkId" text,
+  "providerDocumentId" text NOT NULL,
+  "documentId" text NOT NULL,
+  "documentTypeId" text NOT NULL,
+  "processId" text NOT NULL,
+  "senderParticipantId" text NOT NULL,
+  "receiverParticipantId" text NOT NULL,
+  direction text NOT NULL CHECK (direction IN ('sent', 'received')),
+  status text NOT NULL,
+  "documentType" text NOT NULL CHECK ("documentType" IN ('invoice', 'creditNote')),
   "createdAt" timestamptz DEFAULT now(),
-  "updatedAt" timestamptz DEFAULT now()
+  "acknowledgedAt" timestamptz,
+  "createdById" uuid REFERENCES auth.users(id)
 );
 
 -- Account Deactivation Requests Table

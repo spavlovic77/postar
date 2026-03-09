@@ -14,15 +14,14 @@ export default function AuthCallbackPage() {
     async function handleCallback() {
       const supabase = createClient()
 
-      // Check for code parameter (from magic link email)
       const code = searchParams.get("code")
       const invitationToken = searchParams.get("invitation_token")
-      
-      if (code) {
-        // Sign out any existing session first to ensure clean session switch
-        await supabase.auth.signOut()
 
-        // Exchange the code for a session
+      // Sign out any existing session first to ensure clean session switch
+      await supabase.auth.signOut()
+
+      if (code) {
+        // PKCE flow: exchange code for session
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
         if (exchangeError) {
@@ -30,9 +29,29 @@ export default function AuthCallbackPage() {
           setErrorMsg(`Nepodarilo sa overiť odkaz: ${exchangeError.message}`)
           return
         }
+      } else {
+        // Implicit flow: access_token is in the hash fragment
+        // Parse hash fragment manually (not available in searchParams)
+        const hash = window.location.hash.substring(1)
+        const hashParams = new URLSearchParams(hash)
+        const accessToken = hashParams.get("access_token")
+        const refreshToken = hashParams.get("refresh_token")
+
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+
+          if (sessionError) {
+            setStatus("error")
+            setErrorMsg(`Nepodarilo sa overiť odkaz: ${sessionError.message}`)
+            return
+          }
+        }
       }
 
-      // Get the session after exchange
+      // Verify we have a valid session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError || !session) {
@@ -41,7 +60,7 @@ export default function AuthCallbackPage() {
         return
       }
 
-      // Check if there's an invitation token
+      // Accept invitation if token present
       if (invitationToken) {
         const res = await fetch(`/api/invitations/accept/${invitationToken}`)
         const data = await res.json()
