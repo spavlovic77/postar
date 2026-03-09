@@ -143,21 +143,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: invError.message }, { status: 500 })
   }
 
-  // Send magic link via Supabase Auth - prioritize env var for production
+  // Send invitation via Admin API (no PKCE, server-to-server)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"
   const redirectUrl = `${baseUrl}/auth/callback?invitation_token=${token}`
 
-  const { error: otpError } = await supabase.auth.signInWithOtp({
+  // Use admin API to generate invite link - this bypasses PKCE
+  const { data: inviteData, error: inviteError } = await adminClient.auth.admin.generateLink({
+    type: "magiclink",
     email: result.data.email,
     options: {
-      shouldCreateUser: true,
-      emailRedirectTo: redirectUrl,
+      redirectTo: redirectUrl,
     },
   })
 
-  if (otpError) {
-    // Rollback invitation if OTP fails
+  if (inviteError || !inviteData) {
+    // Rollback invitation if link generation fails
     await adminClient.from("invitations").delete().eq("id", invitation.id)
+    console.error("[v0] Failed to generate invite link:", inviteError)
+    return NextResponse.json(
+      { error: "Failed to generate invitation link" },
+      { status: 500 }
+    )
+  }
+
+  // Send the email using Supabase's invite user API
+  const { error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
+    redirectTo: redirectUrl,
+  })
+
+  if (emailError) {
+    // Rollback invitation if email fails
+    await adminClient.from("invitations").delete().eq("id", invitation.id)
+    console.error("[v0] Failed to send invitation email:", emailError)
     return NextResponse.json(
       { error: "Failed to send invitation email" },
       { status: 500 }
