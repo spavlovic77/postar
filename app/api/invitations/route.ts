@@ -225,9 +225,20 @@ export async function POST(request: Request) {
       }
     }
 
+    // Fetch DICs for the assigned companies (for audit correlation)
+    const companyIds = result.data.companyIds || []
+    let companyDics: string[] = []
+    if (companyIds.length > 0) {
+      const { data: companyData } = await adminClient
+        .from("companies")
+        .select("dic")
+        .in("id", companyIds)
+      companyDics = companyData?.map(c => c.dic) || []
+    }
+
     await logAuditEvent({
       userId: user.id,
-      action: "invitation.create",
+      action: "onboarding.invitation.create",
       outcome: "success",
       sourceIp: ip,
       userAgent,
@@ -240,7 +251,9 @@ export async function POST(request: Request) {
         email: result.data.email,
         invitedRole: result.data.role,
         actorRole: actorRoleData.role,
-        companyIds: result.data.companyIds,
+        companyIds,
+        dics: companyDics,
+        step: "invitation_sent",
       },
     })
 

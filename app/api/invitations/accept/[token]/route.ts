@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { syncUserToIonAp } from "@/lib/ionAp/sync"
+import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import crypto from "crypto"
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params
@@ -104,11 +106,44 @@ export async function GET(
     .update({ status: "accepted" })
     .eq("id", invitation.id)
 
-  console.log(`[Invitation] Invitation accepted: invitationId=${invitation.id}, role=${effectiveRole}`)
+  // Fetch DICs for all assigned companies (for audit correlation)
+  let companyDics: string[] = []
+  if (companyIds.length > 0) {
+    const { data: companyData } = await adminClient
+      .from("companies")
+      .select("dic")
+      .in("id", companyIds)
+    companyDics = companyData?.map((c: { dic: string }) => c.dic) || []
+  }
+
+  const acceptCorrelationId = crypto.randomUUID()
+  console.log(`[Invitation] Invitation accepted: invitationId=${invitation.id}, role=${effectiveRole}, dics=${companyDics.join(",")}, correlationId=${acceptCorrelationId}`)
+
+  // Audit: invitation accepted
+  await logAuditEvent({
+    userId: user.id,
+    action: "onboarding.invitation.accept",
+    outcome: "success",
+    sourceIp: request.headers.get("x-forwarded-for") ?? "127.0.0.1",
+    userAgent: request.headers.get("user-agent") ?? "",
+    requestMethod: "GET",
+    requestPath: `/api/invitations/accept/${token}`,
+    responseStatus: 200,
+    correlationId: acceptCorrelationId,
+    details: {
+      invitationId: invitation.id,
+      email: user.email,
+      role: effectiveRole,
+      companyIds,
+      dics: companyDics,
+      assignmentIds: newAssignmentIds,
+      step: "invitation_accepted",
+    },
+  })
 
   // Fire-and-forget: create ION AP users for administrators
   if (effectiveRole === "administrator" && newAssignmentIds.length > 0) {
-    console.log(`[Invitation] Triggering ION AP user sync for ${newAssignmentIds.length} assignments`)
+    console.log(`[Invitation] [DICs=${companyDics.join(",")}] Triggering ION AP user sync for ${newAssignmentIds.length} assignments: ${newAssignmentIds.join(", ")}`)
     for (const assignmentId of newAssignmentIds) {
       syncUserToIonAp(assignmentId).catch((err) =>
         console.error(`[Invitation] ION AP user sync failed for assignment=${assignmentId}:`, err)

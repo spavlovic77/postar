@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 interface AuditLogEntry {
   userId: string | null
@@ -37,6 +37,34 @@ export async function logAuditEvent(entry: AuditLogEntry): Promise<void> {
   })
 }
 
+/**
+ * Log audit event using admin client (bypasses RLS).
+ * Use this for background operations without request context
+ * (e.g., ION AP sync, fire-and-forget tasks).
+ */
+export async function logAuditEventAdmin(entry: AuditLogEntry): Promise<void> {
+  const supabase = createAdminClient()
+
+  const signatureId = mapActionToSignatureId(entry.action)
+  const severity = entry.outcome === "success" ? 3 : 7
+
+  await supabase.from("auditLogs").insert({
+    userId: entry.userId,
+    companyId: entry.companyId,
+    action: entry.action,
+    outcome: entry.outcome,
+    sourceIp: entry.sourceIp,
+    userAgent: entry.userAgent,
+    requestMethod: entry.requestMethod,
+    requestPath: entry.requestPath,
+    responseStatus: entry.responseStatus,
+    correlationId: entry.correlationId,
+    details: entry.details,
+    signatureId,
+    severity,
+  })
+}
+
 function mapActionToSignatureId(action: string): string {
   const mapping: Record<string, string> = {
     "auth.login": "AUTH-001",
@@ -49,6 +77,15 @@ function mapActionToSignatureId(action: string): string {
     "company.update": "ADMIN-002",
     "user.create": "ADMIN-003",
     "accessPoint.create": "ADMIN-004",
+    "onboarding.ionap.company.sync": "ONBOARD-001",
+    "onboarding.ionap.company.success": "ONBOARD-002",
+    "onboarding.ionap.company.failed": "ONBOARD-003",
+    "onboarding.invitation.create": "ONBOARD-004",
+    "onboarding.invitation.accept": "ONBOARD-005",
+    "onboarding.ionap.user.sync": "ONBOARD-006",
+    "onboarding.ionap.user.success": "ONBOARD-007",
+    "onboarding.ionap.user.failed": "ONBOARD-008",
+    "onboarding.ionap.user.retry": "ONBOARD-009",
   }
   return mapping[action] ?? "UNKNOWN"
 }

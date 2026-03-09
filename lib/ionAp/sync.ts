@@ -9,6 +9,8 @@
 
 import { IonApClient, IonApApiError } from "./client"
 import { createAdminClient } from "@/lib/supabase/server"
+import { logAuditEventAdmin } from "@/lib/sapiSk/auditLog"
+import crypto from "crypto"
 
 export interface SyncResult {
   success: boolean
@@ -29,7 +31,8 @@ export interface UserSyncResult {
  * Safe to call multiple times — skips if already successful.
  */
 export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult> {
-  console.log(`[ION AP Sync] Starting sync for companyId=${companyId}`)
+  const correlationId = crypto.randomUUID()
+  console.log(`[ION AP Sync] Starting sync for companyId=${companyId}, correlationId=${correlationId}`)
   const supabase = createAdminClient()
 
   // Fetch company
@@ -44,25 +47,41 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
     return { success: false, error: "Company not found" }
   }
 
-  console.log(`[ION AP Sync] Company fetched: dic=${company.dic}, legalName=${company.legalName}, ionApStatus=${company.ionApStatus}, ionApOrgId=${company.ionApOrgId}`)
+  const dic = company.dic
+  console.log(`[ION AP Sync] [DIC=${dic}] Company fetched: legalName=${company.legalName}, ionApStatus=${company.ionApStatus}, ionApOrgId=${company.ionApOrgId}`)
 
   // Skip if already registered successfully
   if (company.ionApStatus === "success" && company.ionApOrgId) {
-    console.log(`[ION AP Sync] Already registered, skipping. orgId=${company.ionApOrgId}`)
+    console.log(`[ION AP Sync] [DIC=${dic}] Already registered, skipping. orgId=${company.ionApOrgId}`)
     return { success: true, orgId: company.ionApOrgId }
   }
+
+  // Audit: sync started
+  await logAuditEventAdmin({
+    userId: null,
+    companyId,
+    action: "onboarding.ionap.company.sync",
+    outcome: "pending",
+    sourceIp: "system",
+    userAgent: "ion-ap-sync",
+    requestMethod: "POST",
+    requestPath: `/ionap/organizations`,
+    responseStatus: 0,
+    correlationId,
+    details: { dic, legalName: company.legalName, step: "ionap_company_registration" },
+  })
 
   try {
     const client = new IonApClient()
 
-    console.log(`[ION AP Sync] Calling registerCompany: dic=${company.dic}, name=${company.legalName || "Company"}, reference=${company.pfsVerificationToken || "(empty)"}`)
+    console.log(`[ION AP Sync] [DIC=${dic}] Calling registerCompany: name=${company.legalName || "Company"}, reference=${company.pfsVerificationToken || "(empty)"}`)
     const result = await client.registerCompany({
       dic: company.dic,
       reference: company.pfsVerificationToken || "",
       name: company.legalName || "Company",
     })
 
-    console.log(`[ION AP Sync] Registration successful: orgId=${result.orgId}, identifierId=${result.identifierId}`)
+    console.log(`[ION AP Sync] [DIC=${dic}] Registration successful: orgId=${result.orgId}, identifierId=${result.identifierId}`)
 
     // Update company with ION AP data
     const { error: updateError } = await supabase
@@ -77,10 +96,25 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
       .eq("id", companyId)
 
     if (updateError) {
-      console.error(`[ION AP Sync] DB update failed after successful registration: companyId=${companyId}`, updateError.message)
+      console.error(`[ION AP Sync] [DIC=${dic}] DB update failed after successful registration: companyId=${companyId}`, updateError.message)
     } else {
-      console.log(`[ION AP Sync] DB updated successfully: companyId=${companyId}, ionApStatus=success`)
+      console.log(`[ION AP Sync] [DIC=${dic}] DB updated successfully: companyId=${companyId}, ionApStatus=success`)
     }
+
+    // Audit: sync success
+    await logAuditEventAdmin({
+      userId: null,
+      companyId,
+      action: "onboarding.ionap.company.success",
+      outcome: "success",
+      sourceIp: "system",
+      userAgent: "ion-ap-sync",
+      requestMethod: "POST",
+      requestPath: `/ionap/organizations`,
+      responseStatus: 200,
+      correlationId,
+      details: { dic, orgId: result.orgId, identifierId: result.identifierId, step: "ionap_company_registration" },
+    })
 
     return { success: true, orgId: result.orgId, identifierId: result.identifierId }
   } catch (err) {
@@ -90,7 +124,7 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
         ? err.message
         : "Unknown error"
 
-    console.error(`[ION AP Sync] Registration failed for companyId=${companyId}: ${errorMessage}`)
+    console.error(`[ION AP Sync] [DIC=${dic}] Registration failed for companyId=${companyId}: ${errorMessage}`)
 
     // Persist failure
     const { error: updateError } = await supabase
@@ -103,10 +137,25 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
       .eq("id", companyId)
 
     if (updateError) {
-      console.error(`[ION AP Sync] DB update failed after registration error: companyId=${companyId}`, updateError.message)
+      console.error(`[ION AP Sync] [DIC=${dic}] DB update failed after registration error: companyId=${companyId}`, updateError.message)
     } else {
-      console.log(`[ION AP Sync] DB updated: companyId=${companyId}, ionApStatus=failed`)
+      console.log(`[ION AP Sync] [DIC=${dic}] DB updated: companyId=${companyId}, ionApStatus=failed`)
     }
+
+    // Audit: sync failed
+    await logAuditEventAdmin({
+      userId: null,
+      companyId,
+      action: "onboarding.ionap.company.failed",
+      outcome: "failure",
+      sourceIp: "system",
+      userAgent: "ion-ap-sync",
+      requestMethod: "POST",
+      requestPath: `/ionap/organizations`,
+      responseStatus: 502,
+      correlationId,
+      details: { dic, error: errorMessage, step: "ionap_company_registration" },
+    })
 
     return { success: false, error: errorMessage }
   }
@@ -118,7 +167,8 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
  * Requires the company to already be registered on ION AP (ionApStatus=success).
  */
 export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncResult> {
-  console.log(`[ION AP User Sync] Starting user sync for assignmentId=${assignmentId}`)
+  const correlationId = crypto.randomUUID()
+  console.log(`[ION AP User Sync] Starting user sync for assignmentId=${assignmentId}, correlationId=${correlationId}`)
   const supabase = createAdminClient()
 
   // Fetch the assignment with company and user data
@@ -133,13 +183,15 @@ export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncRes
     return { success: false, error: "Assignment not found" }
   }
 
+  console.log(`[ION AP User Sync] Assignment fetched: userId=${assignment.userId}, companyId=${assignment.companyId}, currentStatus=${assignment.ionApUserStatus}`)
+
   // Skip if already registered successfully
   if (assignment.ionApUserStatus === "success" && assignment.ionApUserId) {
-    console.log(`[ION AP User Sync] Already registered, skipping. userId=${assignment.ionApUserId}`)
+    console.log(`[ION AP User Sync] Already registered, skipping. ionApUserId=${assignment.ionApUserId}`)
     return { success: true, userId: assignment.ionApUserId }
   }
 
-  // Fetch company to get ionApOrgId
+  // Fetch company to get ionApOrgId and DIC
   const { data: company } = await supabase
     .from("companies")
     .select("id, ionApOrgId, ionApStatus, dic")
@@ -153,10 +205,26 @@ export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncRes
     return { success: false, error }
   }
 
+  const dic = company.dic
+  console.log(`[ION AP User Sync] [DIC=${dic}] Company fetched: ionApOrgId=${company.ionApOrgId}, ionApStatus=${company.ionApStatus}`)
+
   if (company.ionApStatus !== "success" || !company.ionApOrgId) {
     const error = `Company not registered on ION AP (status=${company.ionApStatus})`
-    console.error(`[ION AP User Sync] ${error}: companyId=${company.id}`)
+    console.error(`[ION AP User Sync] [DIC=${dic}] ${error}`)
     await updateAssignmentStatus(supabase, assignmentId, "failed", error)
+    await logAuditEventAdmin({
+      userId: assignment.userId,
+      companyId: company.id,
+      action: "onboarding.ionap.user.failed",
+      outcome: "failure",
+      sourceIp: "system",
+      userAgent: "ion-ap-user-sync",
+      requestMethod: "POST",
+      requestPath: `/ionap/organizations/${company.ionApOrgId || "?"}/users`,
+      responseStatus: 0,
+      correlationId,
+      details: { dic, assignmentId, error, step: "ionap_user_creation" },
+    })
     return { success: false, error }
   }
 
@@ -164,18 +232,34 @@ export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncRes
   const { data: { user } } = await supabase.auth.admin.getUserById(assignment.userId)
   if (!user?.email) {
     const error = "User email not found"
-    console.error(`[ION AP User Sync] ${error}: userId=${assignment.userId}`)
+    console.error(`[ION AP User Sync] [DIC=${dic}] ${error}: userId=${assignment.userId}`)
     await updateAssignmentStatus(supabase, assignmentId, "failed", error)
     return { success: false, error }
   }
 
-  console.log(`[ION AP User Sync] Creating user on ION AP: orgId=${company.ionApOrgId}, email=${user.email}, companyDic=${company.dic}`)
+  console.log(`[ION AP User Sync] [DIC=${dic}] Creating ION AP user: orgId=${company.ionApOrgId}, email=${user.email}, assignmentId=${assignmentId}`)
+
+  // Audit: user sync started
+  await logAuditEventAdmin({
+    userId: assignment.userId,
+    companyId: company.id,
+    action: "onboarding.ionap.user.sync",
+    outcome: "pending",
+    sourceIp: "system",
+    userAgent: "ion-ap-user-sync",
+    requestMethod: "POST",
+    requestPath: `/ionap/organizations/${company.ionApOrgId}/users`,
+    responseStatus: 0,
+    correlationId,
+    details: { dic, email: user.email, assignmentId, orgId: company.ionApOrgId, step: "ionap_user_creation" },
+  })
 
   try {
     const client = new IonApClient()
+    console.log(`[ION AP User Sync] [DIC=${dic}] Calling ION AP createUser + getUsers for orgId=${company.ionApOrgId}`)
     const result = await client.registerUser(company.ionApOrgId, user.email)
 
-    console.log(`[ION AP User Sync] User registered: userId=${result.userId}, authToken=${result.authToken ? "(present)" : "(missing)"}`)
+    console.log(`[ION AP User Sync] [DIC=${dic}] User registered successfully: ionApUserId=${result.userId}, authToken=${result.authToken ? "(present)" : "(missing)"}`)
 
     // Save to companyAssignment
     const { error: updateError } = await supabase
@@ -189,10 +273,25 @@ export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncRes
       .eq("id", assignmentId)
 
     if (updateError) {
-      console.error(`[ION AP User Sync] DB update failed: assignmentId=${assignmentId}`, updateError.message)
+      console.error(`[ION AP User Sync] [DIC=${dic}] DB update failed: assignmentId=${assignmentId}`, updateError.message)
     } else {
-      console.log(`[ION AP User Sync] DB updated: assignmentId=${assignmentId}, ionApUserStatus=success`)
+      console.log(`[ION AP User Sync] [DIC=${dic}] DB updated: assignmentId=${assignmentId}, ionApUserStatus=success, ionApUserId=${result.userId}`)
     }
+
+    // Audit: user sync success
+    await logAuditEventAdmin({
+      userId: assignment.userId,
+      companyId: company.id,
+      action: "onboarding.ionap.user.success",
+      outcome: "success",
+      sourceIp: "system",
+      userAgent: "ion-ap-user-sync",
+      requestMethod: "POST",
+      requestPath: `/ionap/organizations/${company.ionApOrgId}/users`,
+      responseStatus: 200,
+      correlationId,
+      details: { dic, email: user.email, assignmentId, ionApUserId: result.userId, hasAuthToken: !!result.authToken, step: "ionap_user_creation" },
+    })
 
     return { success: true, userId: result.userId, authToken: result.authToken }
   } catch (err) {
@@ -202,8 +301,23 @@ export async function syncUserToIonAp(assignmentId: string): Promise<UserSyncRes
         ? err.message
         : "Unknown error"
 
-    console.error(`[ION AP User Sync] Failed for assignmentId=${assignmentId}: ${errorMessage}`)
+    console.error(`[ION AP User Sync] [DIC=${dic}] Failed for assignmentId=${assignmentId}: ${errorMessage}`)
     await updateAssignmentStatus(supabase, assignmentId, "failed", errorMessage)
+
+    // Audit: user sync failed
+    await logAuditEventAdmin({
+      userId: assignment.userId,
+      companyId: company.id,
+      action: "onboarding.ionap.user.failed",
+      outcome: "failure",
+      sourceIp: "system",
+      userAgent: "ion-ap-user-sync",
+      requestMethod: "POST",
+      requestPath: `/ionap/organizations/${company.ionApOrgId}/users`,
+      responseStatus: 502,
+      correlationId,
+      details: { dic, email: user.email, assignmentId, error: errorMessage, step: "ionap_user_creation" },
+    })
 
     return { success: false, error: errorMessage }
   }

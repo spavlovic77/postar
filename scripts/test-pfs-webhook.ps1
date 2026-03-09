@@ -6,10 +6,10 @@
 # --- Configuration (edit these) ---
 $appUrl  = "https://postar-six.vercel.app"
 $secret  = "9fB2kL8vT5rPqX3mW7nJ4cZ6eA1tD0g"
-$dic     = "2120194428"
-$token   = "test-token-999"
-$legalName = "Maliar Musna Patrick.SK, s.r.o."
-$email   = "masna@example.com"
+$dic     = "2121154266"
+$token   = "test-token-101"
+$legalName = "BAČA s. r. o."
+$email   = "basca@example.com"
 $phone   = "+421900123456"
 # ----------------------------------
 

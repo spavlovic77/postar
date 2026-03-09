@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { syncUserToIonAp } from "@/lib/ionAp/sync"
+import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import crypto from "crypto"
 
 /**
  * POST /api/admin/assignments/[id]/ion-ap-user-sync
@@ -10,10 +12,13 @@ import { syncUserToIonAp } from "@/lib/ionAp/sync"
  * SuperAdmin only.
  */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const correlationId = crypto.randomUUID()
+  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
+  const userAgent = request.headers.get("user-agent") ?? ""
   const supabase = await createClient()
 
   // Auth check
@@ -34,8 +39,25 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // Reset status so sync doesn't skip — allows retry after failure
+  // Fetch assignment + company DIC for audit correlation
   const adminClient = createAdminClient()
+  const { data: assignment } = await adminClient
+    .from("companyAssignments")
+    .select("companyId, userId")
+    .eq("id", id)
+    .single()
+
+  let dic: string | null = null
+  if (assignment) {
+    const { data: company } = await adminClient
+      .from("companies")
+      .select("dic")
+      .eq("id", assignment.companyId)
+      .single()
+    dic = company?.dic || null
+  }
+
+  // Reset status so sync doesn't skip — allows retry after failure
   await adminClient
     .from("companyAssignments")
     .update({
@@ -44,7 +66,22 @@ export async function POST(
     })
     .eq("id", id)
 
-  console.log(`[ION AP User Sync] Manual retry triggered for assignment=${id} by user=${user.id}`)
+  console.log(`[ION AP User Sync] [DIC=${dic}] Manual retry triggered for assignment=${id} by user=${user.id}, correlationId=${correlationId}`)
+
+  // Audit: manual retry
+  await logAuditEvent({
+    userId: user.id,
+    companyId: assignment?.companyId,
+    action: "onboarding.ionap.user.retry",
+    outcome: "pending",
+    sourceIp: ip,
+    userAgent,
+    requestMethod: "POST",
+    requestPath: `/api/admin/assignments/${id}/ion-ap-user-sync`,
+    responseStatus: 0,
+    correlationId,
+    details: { dic, assignmentId: id, targetUserId: assignment?.userId, step: "ionap_user_manual_retry" },
+  })
 
   const result = await syncUserToIonAp(id)
 

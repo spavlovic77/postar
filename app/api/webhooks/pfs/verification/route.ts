@@ -296,6 +296,7 @@ export async function POST(request: Request) {
 
     await logAuditEvent({
       userId: null,
+      companyId: newCompany.id,
       action: "webhook.pfs.verification",
       outcome: "success",
       sourceIp: ip,
@@ -309,6 +310,7 @@ export async function POST(request: Request) {
         companyId: newCompany.id,
         dic: payload.dic,
         verification_token: payload.verification_token,
+        step: "webhook_company_created",
       },
     })
 
