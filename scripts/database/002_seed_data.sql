@@ -39,11 +39,11 @@ WHERE ur.role = 'superAdmin';
 -- =====================================================
 -- These are the SAPI SK access points for document submission
 
-INSERT INTO "accessPointProviders" (id, name, url, description, "isActive")
-VALUES 
-  (gen_random_uuid(), 'SAPI SK - Production', 'https://www.financnasprava.sk', 'Slovak Financial Administration - Production', true),
-  (gen_random_uuid(), 'SAPI SK - Test', 'https://testsapi.financnasprava.sk', 'Slovak Financial Administration - Test Environment', true)
-ON CONFLICT DO NOTHING;
+-- INSERT INTO "accessPointProviders" (id, name, url, description, "isActive")
+-- VALUES 
+--  (gen_random_uuid(), 'SAPI SK - Production', 'https://www.financnasprava.sk', 'Slovak Financial Administration - Production', true),
+--  (gen_random_uuid(), 'SAPI SK - Test', 'https://testsapi.financnasprava.sk', 'Slovak Financial Administration - Test Environment', true)
+-- ON CONFLICT DO NOTHING;
 
 -- =====================================================
 -- STEP 3: SEED SAMPLE COMPANY (Optional - for testing)
@@ -73,7 +73,7 @@ LEFT JOIN "userRoles" ur ON ur."userId" = u.id
 ORDER BY ur.role;
 
 -- Check access point providers
-SELECT name, url, "isActive" FROM "accessPointProviders";
+-- SELECT name, url, "isActive" FROM "accessPointProviders";
 
 -- Check companies
-SELECT name, dic, "icDph", "isActive" FROM companies;
+-- SELECT name, dic, "icDph", "isActive" FROM companies;
