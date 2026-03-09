@@ -62,9 +62,15 @@ export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
   const userAgent = request.headers.get("user-agent") ?? ""
 
+  console.log("[v0] ========== PFS WEBHOOK START ==========")
+  console.log("[v0] Correlation ID:", correlationId)
+  console.log("[v0] IP:", ip)
+  console.log("[v0] User-Agent:", userAgent)
+
   try {
     // Get signature from header
     const signature = request.headers.get("x-pfs-signature")
+    console.log("[v0] Signature header present:", !!signature)
     if (!signature) {
       await logAuditEvent({
         userId: null,
@@ -83,9 +89,14 @@ export async function POST(request: Request) {
 
     // Get raw body for signature validation
     const rawBody = await request.text()
+    console.log("[v0] Raw body length:", rawBody.length)
+    console.log("[v0] Raw body preview:", rawBody.substring(0, 200))
     
     // Validate signature
-    if (!validateSignature(rawBody, signature)) {
+    const signatureValid = validateSignature(rawBody, signature)
+    console.log("[v0] Signature valid:", signatureValid)
+    
+    if (!signatureValid) {
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -105,7 +116,9 @@ export async function POST(request: Request) {
     let payload: PfsVerificationPayload
     try {
       payload = JSON.parse(rawBody)
-    } catch {
+      console.log("[v0] Parsed payload:", JSON.stringify(payload, null, 2))
+    } catch (parseErr) {
+      console.error("[v0] JSON parse error:", parseErr)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -155,16 +168,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid DIC format. Must be exactly 10 digits." }, { status: 400 })
     }
 
+    console.log("[v0] Creating admin client...")
     const adminClient = createAdminClient()
+    console.log("[v0] Admin client created")
 
     // Check for idempotency - skip if verification token already exists
-    const { data: existingByToken } = await adminClient
+    console.log("[v0] Checking for existing company by token:", payload.verification_token)
+    const { data: existingByToken, error: tokenCheckError } = await adminClient
       .from("companies")
       .select("id")
       .eq("pfsVerificationToken", payload.verification_token)
       .single()
 
+    console.log("[v0] Token check result:", { found: !!existingByToken, error: tokenCheckError?.message })
+
     if (existingByToken) {
+      console.log("[v0] Duplicate webhook - company already exists:", existingByToken.id)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
@@ -189,13 +208,17 @@ export async function POST(request: Request) {
     }
 
     // Check if company with this DIC already exists
-    const { data: existingByDic } = await adminClient
+    console.log("[v0] Checking for existing company by DIC:", payload.dic)
+    const { data: existingByDic, error: dicCheckError } = await adminClient
       .from("companies")
       .select("id, status, pfsVerificationToken")
       .eq("dic", payload.dic)
       .single()
 
+    console.log("[v0] DIC check result:", { found: !!existingByDic, error: dicCheckError?.message })
+
     if (existingByDic) {
+      console.log("[v0] Company with DIC exists:", existingByDic.id)
       // Update existing company with verification token and contact info
       const updateFields: Record<string, unknown> = {}
       if (!existingByDic.pfsVerificationToken) {
@@ -242,6 +265,17 @@ export async function POST(request: Request) {
     }
 
     // Create new draft company
+    console.log("[v0] Creating new draft company...")
+    const insertData = {
+      dic: payload.dic,
+      pfsVerificationToken: payload.verification_token,
+      adminEmail: payload.company_email || null,
+      adminPhone: payload.company_phone || null,
+      status: "draft",
+      isActive: false,
+    }
+    console.log("[v0] Insert data:", JSON.stringify(insertData, null, 2))
+    
     const { data: newCompany, error: insertError } = await adminClient
       .from("companies")
       .insert({
@@ -255,7 +289,10 @@ export async function POST(request: Request) {
       .select()
       .single()
 
+    console.log("[v0] Insert result:", { success: !!newCompany, error: insertError?.message, companyId: newCompany?.id })
+
     if (insertError) {
+      console.error("[v0] Database insert failed:", insertError)
       await logAuditEvent({
         userId: null,
         action: "webhook.pfs.verification",
