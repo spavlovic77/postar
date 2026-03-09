@@ -86,6 +86,10 @@ function mapActionToSignatureId(action: string): string {
     "onboarding.ionap.user.success": "ONBOARD-007",
     "onboarding.ionap.user.failed": "ONBOARD-008",
     "onboarding.ionap.user.retry": "ONBOARD-009",
+    "onboarding.invitation.auto.success": "ONBOARD-010",
+    "onboarding.invitation.auto.failed": "ONBOARD-011",
+    "onboarding.invitation.auto.skipped": "ONBOARD-012",
+    "onboarding.invitation.manual.retry": "ONBOARD-013",
   }
   return mapping[action] ?? "UNKNOWN"
 }

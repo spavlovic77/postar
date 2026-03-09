@@ -17,6 +17,7 @@ import {
   Mail,
   LayoutDashboard,
   Shield,
+  Rocket,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useUserRole } from "@/hooks/useUserRole"
@@ -35,6 +36,7 @@ const superAdminNav: NavItem[] = [
   { name: "Pozvanky", href: "/admin/invitations", icon: Mail },
   { name: "Deaktivacie", href: "/admin/deactivation-requests", icon: ShieldAlert },
   { name: "Pristupove body", href: "/admin/accessPoints", icon: Server },
+  { name: "Onboarding", href: "/admin/onboarding", icon: Rocket },
   { name: "Audit log", href: "/admin/auditLogs", icon: ScrollText },
   { name: "Dokumenty", href: "/documents", icon: FileText },
   { name: "Nastavenia", href: "/settings", icon: Settings },

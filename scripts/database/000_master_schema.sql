@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS public.companies (
   "ionApIdentifierId" integer,
   "ionApStatus" text DEFAULT 'pending' CHECK ("ionApStatus" IN ('pending', 'success', 'failed')),
   "ionApError" text,
+  "invitationStatus" text CHECK ("invitationStatus" IN ('pending', 'success', 'failed', 'skipped')),
+  "invitationError" text,
   "createdAt" timestamptz DEFAULT now(),
   "updatedAt" timestamptz DEFAULT now()
 );

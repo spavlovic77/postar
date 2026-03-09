@@ -10,6 +10,7 @@
 import { IonApClient, IonApApiError } from "./client"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logAuditEventAdmin } from "@/lib/sapiSk/auditLog"
+import { autoInviteAdministrator } from "@/lib/onboarding/autoInvite"
 import crypto from "crypto"
 
 export interface SyncResult {
@@ -115,6 +116,12 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
       correlationId,
       details: { dic, orgId: result.orgId, identifierId: result.identifierId, step: "ionap_company_registration" },
     })
+
+    // Fire-and-forget: auto-invite administrator after successful ION AP registration
+    console.log(`[ION AP Sync] [DIC=${dic}] Triggering auto-invite for companyId=${companyId}`)
+    autoInviteAdministrator(companyId).catch((err) =>
+      console.error(`[ION AP Sync] [DIC=${dic}] Auto-invite failed for companyId=${companyId}:`, err)
+    )
 
     return { success: true, orgId: result.orgId, identifierId: result.identifierId }
   } catch (err) {

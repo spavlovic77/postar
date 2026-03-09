@@ -36,6 +36,7 @@ export interface DeactivationRequest {
 
 export type CompanyStatus = "draft" | "active" | "suspended"
 export type IonApStatus = "pending" | "success" | "failed"
+export type InvitationSyncStatus = "pending" | "success" | "failed" | "skipped"
 
 export interface Company {
   id: string
@@ -52,6 +53,8 @@ export interface Company {
   ionApIdentifierId: number | null
   ionApStatus: IonApStatus | null
   ionApError: string | null
+  invitationStatus: InvitationSyncStatus | null
+  invitationError: string | null
   createdById: string | null
   createdAt: string
   updatedAt: string
