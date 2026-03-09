@@ -144,28 +144,33 @@ export async function autoInviteAdministrator(companyId: string): Promise<AutoIn
     const { data: existingUsers } = await supabase.auth.admin.listUsers()
     const existingUser = existingUsers?.users?.find((u) => u.email === company.adminEmail)
 
+    console.log(`[Auto Invite] [DIC=${dic}] User lookup: existingUser=${existingUser ? `yes (id=${existingUser.id})` : "no"}, sending via ${existingUser ? "signInWithOtp" : "inviteUserByEmail"}`)
+    console.log(`[Auto Invite] [DIC=${dic}] Redirect URL: ${redirectUrl}`)
+
     if (existingUser) {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
         email: company.adminEmail!,
         options: {
           shouldCreateUser: false,
           emailRedirectTo: redirectUrl,
         },
       })
+      console.log(`[Auto Invite] [DIC=${dic}] signInWithOtp response:`, JSON.stringify({ data: otpData, error: otpError }))
       if (otpError) {
         throw new Error(`Failed to send OTP: ${otpError.message}`)
       }
     } else {
-      const { error: emailError } = await supabase.auth.admin.inviteUserByEmail(
+      const { data: inviteData, error: emailError } = await supabase.auth.admin.inviteUserByEmail(
         company.adminEmail!,
         { redirectTo: redirectUrl }
       )
+      console.log(`[Auto Invite] [DIC=${dic}] inviteUserByEmail response:`, JSON.stringify({ data: inviteData, error: emailError }))
       if (emailError) {
         throw new Error(`Failed to send invitation email: ${emailError.message}`)
       }
     }
 
-    console.log(`[Auto Invite] [DIC=${dic}] Magic link sent to ${company.adminEmail}`)
+    console.log(`[Auto Invite] [DIC=${dic}] Email sent successfully to ${company.adminEmail}`)
 
     // Mark success
     await supabase

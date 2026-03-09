@@ -193,9 +193,12 @@ export async function POST(request: Request) {
     const { data: existingUsers } = await adminClient.auth.admin.listUsers()
     const existingUser = existingUsers?.users?.find(u => u.email === result.data.email)
 
+    console.log(`[Invitation] User lookup for ${result.data.email}: existingUser=${existingUser ? `yes (id=${existingUser.id})` : "no"}, method=${existingUser ? "signInWithOtp" : "inviteUserByEmail"}`)
+    console.log(`[Invitation] Redirect URL: ${redirectUrl}`)
+
     if (existingUser) {
       // User already exists - send magic link via signInWithOtp
-      const { error: otpError } = await adminClient.auth.signInWithOtp({
+      const { data: otpData, error: otpError } = await adminClient.auth.signInWithOtp({
         email: result.data.email,
         options: {
           shouldCreateUser: false,
@@ -203,7 +206,10 @@ export async function POST(request: Request) {
         },
       })
 
+      console.log(`[Invitation] signInWithOtp response:`, JSON.stringify({ data: otpData, error: otpError }))
+
       if (otpError) {
+        console.error(`[Invitation] signInWithOtp FAILED for ${result.data.email}:`, otpError.message)
         await adminClient.from("invitations").delete().eq("id", invitation.id)
         return NextResponse.json(
           { error: "Failed to send invitation email: " + otpError.message },
@@ -212,11 +218,14 @@ export async function POST(request: Request) {
       }
     } else {
       // New user - use inviteUserByEmail
-      const { error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
+      const { data: inviteData, error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
         redirectTo: redirectUrl,
       })
 
+      console.log(`[Invitation] inviteUserByEmail response:`, JSON.stringify({ data: inviteData, error: emailError }))
+
       if (emailError) {
+        console.error(`[Invitation] inviteUserByEmail FAILED for ${result.data.email}:`, emailError.message)
         await adminClient.from("invitations").delete().eq("id", invitation.id)
         return NextResponse.json(
           { error: "Failed to send invitation email" },
@@ -224,6 +233,8 @@ export async function POST(request: Request) {
         )
       }
     }
+
+    console.log(`[Invitation] Email sent successfully to ${result.data.email}, invitationId=${invitation.id}`)
 
     // Fetch DICs for the assigned companies (for audit correlation)
     const companyIds = result.data.companyIds || []
