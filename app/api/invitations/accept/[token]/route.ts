@@ -64,9 +64,10 @@ export async function GET(
     .eq("userId", user.id)
     .single()
 
+  const isNewUser = !existingRole
   const effectiveRole = existingRole?.role || invitation.role
 
-  if (!existingRole) {
+  if (isNewUser) {
     // Create user role
     await adminClient.from("userRoles").insert({
       userId: user.id,
@@ -160,5 +161,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ success: true, role: effectiveRole })
+  return NextResponse.json({ success: true, role: effectiveRole, isNewUser })
 }

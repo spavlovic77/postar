@@ -1,15 +1,11 @@
 /**
- * Shared helper for sending invitation emails via Supabase Admin API.
+ * Shared helper for sending invitation emails.
  *
- * Strategy:
- * 1. Always try inviteUserByEmail first — works for new users and
- *    unconfirmed existing users (re-sends the invite via Supabase SMTP).
- * 2. If it fails (confirmed existing user), fall back to generateLink
- *    (type: magiclink) to get the action URL, then send the email
- *    ourselves via SMTP (nodemailer).
+ * Strategy (always uses our branded email via Resend):
+ * 1. New users      → generateLink(type: "invite") — creates user + returns link
+ * 2. Existing users → generateLink(type: "magiclink") — returns login link
  *
- * NOTE: signInWithOtp does NOT work on the service-role client
- *       (returns unexpected_failure), so we avoid it entirely.
+ * Neither method sends an email — we always send ourselves via Resend.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -17,7 +13,7 @@ import { sendEmail, buildInvitationEmailHtml } from "@/lib/email/sendEmail"
 
 export interface SendInvitationResult {
   success: boolean
-  method: "inviteUserByEmail" | "generateLink+smtp"
+  method: "invite" | "magiclink"
   error?: string
 }
 
@@ -28,53 +24,48 @@ export async function sendInvitationEmail(
   logPrefix: string,
   companyName?: string
 ): Promise<SendInvitationResult> {
-  // Step 1: Try inviteUserByEmail (works for new users + unconfirmed existing)
-  console.log(`${logPrefix} Attempting inviteUserByEmail for ${email}`)
+  console.log(`${logPrefix} Sending invitation to ${email}`)
   console.log(`${logPrefix} Redirect URL: ${redirectUrl}`)
 
-  const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-    redirectTo: redirectUrl,
-  })
-
-  console.log(`${logPrefix} inviteUserByEmail response:`, JSON.stringify({
-    data: inviteData?.user ? { id: inviteData.user.id, email: inviteData.user.email } : null,
-    error: inviteError ? { message: inviteError.message, status: inviteError.status } : null,
-  }))
-
-  if (!inviteError) {
-    console.log(`${logPrefix} inviteUserByEmail SUCCESS — email sent to ${email}`)
-    return { success: true, method: "inviteUserByEmail" }
-  }
-
-  // Step 2: inviteUserByEmail failed (likely "already registered" for confirmed user)
-  // Fall back to generateLink + send email ourselves via SMTP
-  console.warn(`${logPrefix} inviteUserByEmail failed: ${inviteError.message}. Falling back to generateLink + SMTP...`)
-
-  const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-    type: "magiclink",
+  // Step 1: Try generateLink with type "invite" (creates new user if needed)
+  const { data: inviteData, error: inviteError } = await adminClient.auth.admin.generateLink({
+    type: "invite",
     email,
     options: {
       redirectTo: redirectUrl,
     },
   })
 
-  const actionLink = linkData?.properties?.action_link
+  let actionLink = inviteData?.properties?.action_link
+  let method: "invite" | "magiclink" = "invite"
 
-  console.log(`${logPrefix} generateLink response:`, JSON.stringify({
-    data: actionLink ? { action_link: "***generated***", hashed_token: linkData?.properties?.hashed_token ? "***present***" : "missing" } : null,
-    error: linkError ? { message: linkError.message, status: linkError.status } : null,
-  }))
+  if (inviteError || !actionLink) {
+    // User likely already exists and is confirmed — fall back to magiclink
+    console.log(`${logPrefix} generateLink(invite) failed: ${inviteError?.message}. Trying magiclink...`)
 
-  if (linkError || !actionLink) {
-    const errorMsg = linkError?.message || "generateLink returned no action_link"
-    console.error(`${logPrefix} generateLink FAILED for ${email}: ${errorMsg}`)
-    return { success: false, method: "generateLink+smtp", error: errorMsg }
+    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: {
+        redirectTo: redirectUrl,
+      },
+    })
+
+    actionLink = linkData?.properties?.action_link
+    method = "magiclink"
+
+    if (linkError || !actionLink) {
+      const errorMsg = linkError?.message || "generateLink returned no action_link"
+      console.error(`${logPrefix} generateLink(magiclink) FAILED for ${email}: ${errorMsg}`)
+      return { success: false, method: "magiclink", error: errorMsg }
+    }
   }
 
-  // Step 3: Send the magic link email via SMTP
-  console.log(`${logPrefix} generateLink SUCCESS — sending email via SMTP to ${email}`)
+  console.log(`${logPrefix} generateLink(${method}) SUCCESS — sending branded email via Resend`)
 
-  const html = buildInvitationEmailHtml(actionLink, companyName)
+  // Step 2: Send our branded email via Resend
+  const isNewUser = method === "invite"
+  const html = buildInvitationEmailHtml(actionLink, companyName, isNewUser)
   const emailResult = await sendEmail({
     to: email,
     subject: "Pozvánka na Postar",
@@ -82,10 +73,10 @@ export async function sendInvitationEmail(
   })
 
   if (!emailResult.success) {
-    console.error(`${logPrefix} SMTP send FAILED for ${email}: ${emailResult.error}`)
-    return { success: false, method: "generateLink+smtp", error: `Email send failed: ${emailResult.error}` }
+    console.error(`${logPrefix} Resend send FAILED for ${email}: ${emailResult.error}`)
+    return { success: false, method, error: `Email send failed: ${emailResult.error}` }
   }
 
-  console.log(`${logPrefix} generateLink + SMTP SUCCESS — email delivered to ${email}`)
-  return { success: true, method: "generateLink+smtp" }
+  console.log(`${logPrefix} Branded email sent to ${email} via ${method}`)
+  return { success: true, method }
 }

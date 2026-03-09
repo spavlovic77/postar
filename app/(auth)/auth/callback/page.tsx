@@ -51,6 +51,13 @@ export default function AuthCallbackPage() {
           setErrorMsg(data.error || "Nepodarilo sa prijať pozvánku.")
           return
         }
+
+        // New users need to set a password
+        if (data.isNewUser) {
+          router.push("/setup-password")
+          router.refresh()
+          return
+        }
       }
 
       router.push("/")

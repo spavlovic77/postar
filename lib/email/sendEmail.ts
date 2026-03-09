@@ -57,12 +57,22 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
 }
 
 /**
- * Build the HTML email body for an invitation magic link.
+ * Build the HTML email body for an invitation.
+ * Differentiates between new users (set password) and existing users (magic link login).
  */
-export function buildInvitationEmailHtml(magicLink: string, companyName?: string): string {
+export function buildInvitationEmailHtml(
+  magicLink: string,
+  companyName?: string,
+  isNewUser?: boolean
+): string {
   const companyLine = companyName
     ? `<p>Boli ste pozvaní ako administrátor spoločnosti <strong>${companyName}</strong> na platformu Postar.</p>`
     : `<p>Boli ste pozvaní na platformu Postar.</p>`
+
+  const buttonText = isNewUser ? "Vytvoriť účet" : "Prihlásiť sa"
+  const instruction = isNewUser
+    ? `<p>Pre vytvorenie účtu a nastavenie hesla kliknite na odkaz nižšie:</p>`
+    : `<p>Pre prihlásenie kliknite na odkaz nižšie:</p>`
 
   return `
 <!DOCTYPE html>
@@ -71,11 +81,11 @@ export function buildInvitationEmailHtml(magicLink: string, companyName?: string
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #1a1a1a;">Pozvánka na Postar</h2>
   ${companyLine}
-  <p>Pre prihlásenie kliknite na odkaz nižšie:</p>
+  ${instruction}
   <p style="margin: 24px 0;">
     <a href="${magicLink}"
        style="background-color: #0f172a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
-      Prihlásiť sa
+      ${buttonText}
     </a>
   </p>
   <p style="color: #6b7280; font-size: 14px;">Tento odkaz je platný 24 hodín. Ak ste o pozvánku nežiadali, tento e-mail ignorujte.</p>
