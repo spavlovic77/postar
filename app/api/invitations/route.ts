@@ -72,32 +72,41 @@ export async function POST(request: Request) {
     }
 
   const body = await request.json()
+  console.log("[v0] Request body:", JSON.stringify(body))
+  
   const result = inviteUserSchema.safeParse(body)
 
   if (!result.success) {
+    console.log("[v0] Validation failed:", result.error.flatten().fieldErrors)
     return NextResponse.json(
       { error: result.error.flatten().fieldErrors },
       { status: 400 }
     )
   }
 
+  console.log("[v0] Validated data:", result.data)
   const invitedRole = result.data.role as UserRole
 
   // Check if actor can invite this role (hierarchy check)
+  console.log("[v0] Checking canInviteRole:", actorRoleData.role, "->", invitedRole)
   if (!canInviteRole(actorRoleData.role as UserRole, invitedRole)) {
+    console.log("[v0] canInviteRole DENIED")
     return NextResponse.json(
       { error: `You cannot invite users with ${invitedRole} role` },
       { status: 403 }
     )
   }
+  console.log("[v0] canInviteRole ALLOWED")
 
   // Check if actor can assign the requested companies
+  console.log("[v0] Checking canAssignCompanies for companyIds:", result.data.companyIds)
   const companyPermission = await canAssignCompanies(
     adminClient,
     user.id,
     actorRoleData.role as UserRole,
     result.data.companyIds || []
   )
+  console.log("[v0] canAssignCompanies result:", companyPermission)
 
   if (!companyPermission.allowed) {
     return NextResponse.json(
@@ -107,12 +116,15 @@ export async function POST(request: Request) {
   }
 
   // Check if user is already invited or exists
-  const { data: existingInvitation } = await adminClient
+  console.log("[v0] Checking for existing invitation for email:", result.data.email)
+  const { data: existingInvitation, error: existingError } = await adminClient
     .from("invitations")
     .select("id, status")
     .eq("email", result.data.email)
     .eq("status", "pending")
     .single()
+
+  console.log("[v0] Existing invitation check:", { existingInvitation, existingError: existingError?.message })
 
   if (existingInvitation) {
     return NextResponse.json(
@@ -123,6 +135,7 @@ export async function POST(request: Request) {
 
   const token = crypto.randomUUID()
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  console.log("[v0] Generated invitation token:", token, "expires:", expiresAt)
 
   const { data: invitation, error: invError } = await adminClient
     .from("invitations")
@@ -139,6 +152,8 @@ export async function POST(request: Request) {
     .select()
     .single()
 
+  console.log("[v0] Invitation insert result:", { invitationId: invitation?.id, error: invError?.message })
+
   if (invError) {
     return NextResponse.json({ error: invError.message }, { status: 500 })
   }
@@ -146,8 +161,10 @@ export async function POST(request: Request) {
   // Send invitation via Admin API (no PKCE, server-to-server)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "http://localhost:3000"
   const redirectUrl = `${baseUrl}/auth/callback?invitation_token=${token}`
+  console.log("[v0] Invitation URLs - baseUrl:", baseUrl, "redirectUrl:", redirectUrl)
 
   // Use admin API to generate invite link - this bypasses PKCE
+  console.log("[v0] Generating magic link via admin API...")
   const { data: inviteData, error: inviteError } = await adminClient.auth.admin.generateLink({
     type: "magiclink",
     email: result.data.email,
@@ -156,10 +173,16 @@ export async function POST(request: Request) {
     },
   })
 
+  console.log("[v0] generateLink result:", { 
+    hasData: !!inviteData, 
+    actionLink: inviteData?.properties?.action_link?.substring(0, 100) + "...",
+    error: inviteError?.message 
+  })
+
   if (inviteError || !inviteData) {
     // Rollback invitation if link generation fails
     await adminClient.from("invitations").delete().eq("id", invitation.id)
-    console.error("[v0] Failed to generate invite link:", inviteError)
+    console.error("[v0] Failed to generate invite link - rolling back invitation:", inviteError)
     return NextResponse.json(
       { error: "Failed to generate invitation link" },
       { status: 500 }
@@ -167,19 +190,24 @@ export async function POST(request: Request) {
   }
 
   // Send the email using Supabase's invite user API
-  const { error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
+  console.log("[v0] Sending invitation email via inviteUserByEmail...")
+  const { data: emailData, error: emailError } = await adminClient.auth.admin.inviteUserByEmail(result.data.email, {
     redirectTo: redirectUrl,
   })
+
+  console.log("[v0] inviteUserByEmail result:", { hasData: !!emailData, error: emailError?.message })
 
   if (emailError) {
     // Rollback invitation if email fails
     await adminClient.from("invitations").delete().eq("id", invitation.id)
-    console.error("[v0] Failed to send invitation email:", emailError)
+    console.error("[v0] Failed to send invitation email - rolling back invitation:", emailError)
     return NextResponse.json(
       { error: "Failed to send invitation email" },
       { status: 500 }
     )
   }
+  
+  console.log("[v0] Invitation email sent successfully")
 
   await logAuditEvent({
     userId: user.id,

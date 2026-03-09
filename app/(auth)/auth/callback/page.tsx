@@ -48,16 +48,22 @@ export default function AuthCallbackPage() {
 
       // Check if there's an invitation token (already retrieved above)
       if (invitationToken) {
+        console.log("[v0] Auth callback - accepting invitation token:", invitationToken)
         const res = await fetch(`/api/invitations/accept/${invitationToken}`)
+        const data = await res.json()
+        
+        console.log("[v0] Auth callback - invitation accept response:", { ok: res.ok, status: res.status, data })
 
         if (!res.ok) {
-          const data = await res.json()
           setStatus("error")
           setErrorMsg(data.error || "Nepodarilo sa prijať pozvánku.")
           return
         }
+        
+        console.log("[v0] Auth callback - invitation accepted successfully, role:", data.role)
       }
 
+      console.log("[v0] Auth callback - redirecting to /")
       router.push("/")
       router.refresh()
     }
