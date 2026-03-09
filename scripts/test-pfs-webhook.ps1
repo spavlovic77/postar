@@ -6,15 +6,16 @@
 # --- Configuration (edit these) ---
 $appUrl  = "https://postar-six.vercel.app"
 $secret  = "9fB2kL8vT5rPqX3mW7nJ4cZ6eA1tD0g"
-$dic     = "4234567890"
-$token   = "test-token-125"
-$email   = "firma@example.com"
+$dic     = "2120705829"
+$token   = "test-token-854"
+$legalName = "Nutrion s.r.o."
+$email   = "nutrion@example.com"
 $phone   = "+421900123456"
 # ----------------------------------
 
 # Body must match the PfsVerificationPayload interface
 $created = (Get-Date -Format o)
-$body = "{`"dic`":`"$dic`",`"verification_token`":`"$token`",`"company_email`":`"$email`",`"company_phone`":`"$phone`",`"created`":`"$created`"}"
+$body = "{`"dic`":`"$dic`",`"verification_token`":`"$token`",`"legalName`":`"$legalName`",`"company_email`":`"$email`",`"company_phone`":`"$phone`",`"created`":`"$created`"}"
 
 # Write body to temp file (ensures identical bytes for signature and curl)
 $tempFile = [System.IO.Path]::GetTempFileName()

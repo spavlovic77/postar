@@ -19,6 +19,7 @@ import crypto from "crypto"
 interface PfsVerificationPayload {
   verification_token: string
   dic: string
+  legalName?: string
   company_email?: string
   company_phone?: string
   created: string
@@ -201,6 +202,7 @@ export async function POST(request: Request) {
       if (!existingByDic.pfsVerificationToken) {
         updateFields.pfsVerificationToken = payload.verification_token
       }
+      if (payload.legalName) updateFields.legalName = payload.legalName
       if (payload.company_email) updateFields.adminEmail = payload.company_email
       if (payload.company_phone) updateFields.adminPhone = payload.company_phone
 
@@ -246,6 +248,7 @@ export async function POST(request: Request) {
       .from("companies")
       .insert({
         dic: payload.dic,
+        legalName: payload.legalName || null,
         pfsVerificationToken: payload.verification_token,
         adminEmail: payload.company_email || null,
         adminPhone: payload.company_phone || null,
