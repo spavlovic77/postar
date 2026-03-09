@@ -169,40 +169,11 @@ export async function POST(request: Request) {
   console.log("[v0] Existing user check:", { exists: !!existingUser, userId: existingUser?.id })
 
   if (existingUser) {
-    // User already exists - use generateLink with type "invite" which sends an email
-    // Note: "magiclink" type in generateLink does NOT send emails, it just generates the link
-    // We need to use type "invite" for existing users to resend the invite email
-    console.log("[v0] User exists, using generateLink with type 'invite'...")
+    // User already exists - send magic link via signInWithOtp
+    // Note: generateLink with type "invite" fails for existing users with "email_exists"
+    // signInWithOtp with shouldCreateUser: false sends a magic link to existing users
+    console.log("[v0] User exists, sending magic link via signInWithOtp...")
     
-    const { data: inviteLinkData, error: inviteLinkError } = await adminClient.auth.admin.generateLink({
-      type: "invite",
-      email: result.data.email,
-      options: {
-        redirectTo: redirectUrl,
-      },
-    })
-
-    console.log("[v0] generateLink (invite) result:", { 
-      hasData: !!inviteLinkData, 
-      actionLink: inviteLinkData?.properties?.action_link?.substring(0, 100) + "...",
-      error: inviteLinkError?.message 
-    })
-
-    if (inviteLinkError || !inviteLinkData) {
-      await adminClient.from("invitations").delete().eq("id", invitation.id)
-      console.error("[v0] Failed to generate invite link for existing user - rolling back invitation:", inviteLinkError)
-      return NextResponse.json(
-        { error: "Failed to generate invitation link" },
-        { status: 500 }
-      )
-    }
-
-    // generateLink with type "invite" generates the link but doesn't send email
-    // We need to use the Supabase Auth Hooks or send email manually
-    // For now, let's try using the regular auth client to send OTP
-    // This will send the magic link email to the existing user
-    
-    console.log("[v0] Sending magic link email to existing user...")
     const { error: otpError } = await adminClient.auth.signInWithOtp({
       email: result.data.email,
       options: {
@@ -217,7 +188,7 @@ export async function POST(request: Request) {
       await adminClient.from("invitations").delete().eq("id", invitation.id)
       console.error("[v0] Failed to send OTP email - rolling back invitation:", otpError)
       return NextResponse.json(
-        { error: "Failed to send invitation email" },
+        { error: "Failed to send invitation email: " + otpError.message },
         { status: 500 }
       )
     }
