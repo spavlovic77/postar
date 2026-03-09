@@ -46,7 +46,7 @@ interface UserEntry {
   isActive: boolean
   createdAt: string
   user?: { email: string } | null
-  companyAssignments?: { company: { id: string; name: string; dic: string } }[]
+  companyAssignments?: { company: { id: string; legalName: string | null; dic: string } }[]
 }
 
 const roleLabels: Record<string, string> = {
@@ -191,7 +191,7 @@ export default function AdminUsersPage() {
                     <div className="flex flex-wrap gap-1">
                       {entry.companyAssignments?.map((ca) => (
                         <Badge key={ca.company.id} variant="outline">
-                          {ca.company.name}
+                          {ca.company.legalName || ca.company.dic}
                         </Badge>
                       )) || "—"}
                     </div>
@@ -302,7 +302,7 @@ export default function AdminUsersPage() {
                       onChange={() => toggleCompany(c.id)}
                       className="rounded border-input"
                     />
-                    {c.name}{" "}
+                    {c.legalName || c.dic}{" "}
                     <span className="text-muted-foreground">({c.dic})</span>
                   </label>
                 ))}

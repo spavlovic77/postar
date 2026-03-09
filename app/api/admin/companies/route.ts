@@ -86,11 +86,13 @@ export async function POST(request: Request) {
   const { data, error } = await auth.supabase
     .from("companies")
     .insert({
-      name: result.data.name,
       dic: result.data.dic,
       legalName: result.data.legalName,
       adminEmail: result.data.adminEmail || null,
       accessPointProviderId: result.data.accessPointProviderId || null,
+      pfsVerificationToken: result.data.pfsVerificationToken || null,
+      status: result.data.status || "active",
+      isActive: result.data.status !== "draft",
       createdById: auth.user.id,
     })
     .select()
