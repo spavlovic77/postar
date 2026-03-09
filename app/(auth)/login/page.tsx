@@ -5,39 +5,166 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { loginSchema, type LoginInput } from "@/lib/validations/user"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { startAuthentication } from "@simplewebauthn/browser"
+import { Fingerprint } from "lucide-react"
+
+type LoginStep = "credentials" | "mfa"
+
+interface MfaData {
+  mfaRequired: boolean
+  mfaToken: string
+  challenge: any
+}
 
 export default function LoginPage() {
   const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [step, setStep] = useState<LoginStep>("credentials")
+  const [mfaData, setMfaData] = useState<MfaData | null>(null)
+  const [mfaLoading, setMfaLoading] = useState(false)
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
+    getValues,
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
   })
 
   const onSubmit = async (data: LoginInput) => {
     setServerError(null)
-    const supabase = createClient()
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
-    })
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
 
-    if (error) {
-      setServerError("Nesprávny e-mail alebo heslo")
-      return
+      const result = await res.json()
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setServerError("Príliš veľa pokusov. Skúste to neskôr.")
+        } else {
+          setServerError(result.error || "Nesprávny e-mail alebo heslo")
+        }
+        return
+      }
+
+      // Check if MFA is required
+      if (result.mfaRequired) {
+        setMfaData(result)
+        setStep("mfa")
+        return
+      }
+
+      // No MFA - redirect to home
+      router.push("/")
+      router.refresh()
+    } catch {
+      setServerError("Chyba pri prihlasovaní. Skúste to znova.")
     }
+  }
 
-    router.push("/")
-    router.refresh()
+  const handleMfaVerify = async () => {
+    if (!mfaData) return
+
+    setMfaLoading(true)
+    setServerError(null)
+
+    try {
+      // Start WebAuthn authentication
+      const authResponse = await startAuthentication({
+        optionsJSON: mfaData.challenge,
+      })
+
+      // Send verification to server
+      const res = await fetch("/api/auth/login/mfa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mfaToken: mfaData.mfaToken,
+          response: authResponse,
+        }),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setServerError("Príliš veľa pokusov. Skúste to neskôr.")
+        } else {
+          setServerError(result.error || "Overenie zlyhalo")
+        }
+        return
+      }
+
+      // MFA verified - redirect to home
+      router.push("/")
+      router.refresh()
+    } catch (err: any) {
+      if (err.name === "NotAllowedError") {
+        setServerError("Overenie bolo zrušené")
+      } else {
+        setServerError("Overenie zlyhalo. Skúste to znova.")
+      }
+    } finally {
+      setMfaLoading(false)
+    }
+  }
+
+  if (step === "mfa") {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground">Overenie totožnosti</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Použite svoj bezpečnostný kľúč alebo biometrické overenie
+          </p>
+        </div>
+
+        {serverError && (
+          <div
+            role="alert"
+            className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {serverError}
+          </div>
+        )}
+
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+            <Fingerprint className="h-10 w-10 text-primary" />
+          </div>
+
+          <Button
+            onClick={handleMfaVerify}
+            disabled={mfaLoading}
+            className="w-full"
+            aria-busy={mfaLoading}
+          >
+            {mfaLoading ? "Overujem..." : "Overiť pomocou passkey"}
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setStep("credentials")
+              setMfaData(null)
+              setServerError(null)
+            }}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Späť na prihlásenie
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
