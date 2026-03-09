@@ -41,7 +41,6 @@ export async function POST(request: Request) {
   }
 
   const correlationId = crypto.randomUUID()
-  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1"
   const userAgent = request.headers.get("user-agent") ?? ""
 
   await logAuditEvent({
