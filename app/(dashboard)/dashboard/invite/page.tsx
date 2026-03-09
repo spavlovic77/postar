@@ -109,7 +109,7 @@ export default function InviteAccountantPage() {
                     onChange={() => toggleCompany(c.id)}
                     className="rounded border-input"
                   />
-                  {c.name}{" "}
+                  {c.legalName || c.dic}{" "}
                   <span className="text-muted-foreground">({c.dic})</span>
                 </label>
               ))}
