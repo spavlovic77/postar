@@ -8,6 +8,7 @@
 
 import { IonApClient, IonApApiError } from "./client"
 import { createAdminClient } from "@/lib/supabase/server"
+import { lookupByDic } from "@/lib/ruz/lookup"
 
 export interface SyncResult {
   success: boolean
@@ -26,7 +27,7 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
   // Fetch company
   const { data: company, error: fetchError } = await supabase
     .from("companies")
-    .select("id, dic, pfsVerificationToken, ionApOrgId, ionApStatus")
+    .select("id, dic, legalName, pfsVerificationToken, ionApOrgId, ionApStatus")
     .eq("id", companyId)
     .single()
 
@@ -40,12 +41,28 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
   }
 
   try {
+    // Look up real company name from RUZ if not already set
+    let companyName = company.legalName || "Company"
+    try {
+      const ruzData = await lookupByDic(company.dic)
+      if (ruzData?.companyName) {
+        companyName = ruzData.companyName
+        // Persist the legal name to DB
+        await supabase
+          .from("companies")
+          .update({ legalName: companyName })
+          .eq("id", companyId)
+      }
+    } catch (ruzErr) {
+      console.error("RUZ lookup failed, using fallback name:", ruzErr)
+    }
+
     const client = new IonApClient()
 
     const result = await client.registerCompany({
       dic: company.dic,
       reference: company.pfsVerificationToken || "",
-      name: "Company",
+      name: companyName,
     })
 
     // Update company with ION AP data

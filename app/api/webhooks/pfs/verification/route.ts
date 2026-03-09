@@ -17,10 +17,11 @@ import crypto from "crypto"
  */
 
 interface PfsVerificationPayload {
-  event_type: "company_verified"
   verification_token: string
   dic: string
-  timestamp: string
+  company_email?: string
+  company_phone?: string
+  created: string
 }
 
 /**
@@ -120,23 +121,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
     }
 
-    // Validate event type
-    if (payload.event_type !== "company_verified") {
-      await logAuditEvent({
-        userId: null,
-        action: "webhook.pfs.verification",
-        outcome: "failure",
-        sourceIp: ip,
-        userAgent,
-        requestMethod: "POST",
-        requestPath: "/api/webhooks/pfs/verification",
-        responseStatus: 400,
-        correlationId,
-        details: { error: "Unknown event type", event_type: payload.event_type },
-      })
-      return NextResponse.json({ error: "Unknown event type" }, { status: 400 })
-    }
-
     // Validate required fields
     if (!payload.verification_token || !payload.dic) {
       await logAuditEvent({
@@ -212,11 +196,18 @@ export async function POST(request: Request) {
       .single()
 
     if (existingByDic) {
-      // Update existing company with verification token if not already set
+      // Update existing company with verification token and contact info
+      const updateFields: Record<string, unknown> = {}
       if (!existingByDic.pfsVerificationToken) {
+        updateFields.pfsVerificationToken = payload.verification_token
+      }
+      if (payload.company_email) updateFields.adminEmail = payload.company_email
+      if (payload.company_phone) updateFields.adminPhone = payload.company_phone
+
+      if (Object.keys(updateFields).length > 0) {
         await adminClient
           .from("companies")
-          .update({ pfsVerificationToken: payload.verification_token })
+          .update(updateFields)
           .eq("id", existingByDic.id)
 
         await logAuditEvent({
@@ -256,6 +247,8 @@ export async function POST(request: Request) {
       .insert({
         dic: payload.dic,
         pfsVerificationToken: payload.verification_token,
+        adminEmail: payload.company_email || null,
+        adminPhone: payload.company_phone || null,
         status: "draft",
         isActive: false, // Draft companies are inactive until completed
       })

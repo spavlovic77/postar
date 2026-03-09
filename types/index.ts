@@ -42,6 +42,7 @@ export interface Company {
   dic: string
   legalName: string | null
   adminEmail: string | null
+  adminPhone: string | null
   peppolParticipantId: string | null
   accessPointProviderId: string | null
   isActive: boolean

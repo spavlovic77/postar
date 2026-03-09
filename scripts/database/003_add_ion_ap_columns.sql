@@ -4,6 +4,7 @@
 -- ============================================================================
 
 ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS "adminPhone" text,
   ADD COLUMN IF NOT EXISTS "ionApOrgId" integer,
   ADD COLUMN IF NOT EXISTS "ionApIdentifierId" integer,
   ADD COLUMN IF NOT EXISTS "ionApStatus" text DEFAULT 'pending' CHECK ("ionApStatus" IN ('pending', 'success', 'failed')),

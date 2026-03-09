@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
   dic text NOT NULL UNIQUE,
   "legalName" text,
   "adminEmail" text,
+  "adminPhone" text,
   "peppolParticipantId" text,
   "accessPointProviderId" uuid REFERENCES public."accessPointProviders"(id),
   "createdById" uuid REFERENCES auth.users(id),
