@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
 
 interface AuditLogEntry {
-  userId: string
+  userId: string | null
   companyId?: string
   action: string
-  outcome: "success" | "failure"
+  outcome: "success" | "failure" | "pending"
   sourceIp: string
   userAgent: string
   requestMethod: string
