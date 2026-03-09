@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
+import { syncCompanyToIonAp } from "@/lib/ionAp/sync"
 import crypto from "crypto"
 
 /**
@@ -237,8 +238,13 @@ export async function POST(request: Request) {
         })
       }
 
-      return NextResponse.json({ 
-        success: true, 
+      // Trigger ION AP sync (fire-and-forget, don't block webhook response)
+      syncCompanyToIonAp(existingByDic.id).catch((err) =>
+        console.error("ION AP sync failed for existing company:", err)
+      )
+
+      return NextResponse.json({
+        success: true,
         message: "Company already exists",
         company_id: existingByDic.id,
       })
@@ -290,8 +296,13 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json({ 
-      success: true, 
+    // Trigger ION AP registration (fire-and-forget, don't block webhook response)
+    syncCompanyToIonAp(newCompany.id).catch((err) =>
+      console.error("ION AP sync failed for new company:", err)
+    )
+
+    return NextResponse.json({
+      success: true,
       message: "Company created",
       company_id: newCompany.id,
     }, { status: 201 })

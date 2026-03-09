@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS public.companies (
   "isActive" boolean DEFAULT true,
   status text DEFAULT 'active' CHECK (status IN ('draft', 'active', 'suspended')),
   "pfsVerificationToken" text,
+  "ionApOrgId" integer,
+  "ionApIdentifierId" integer,
+  "ionApStatus" text DEFAULT 'pending' CHECK ("ionApStatus" IN ('pending', 'success', 'failed')),
+  "ionApError" text,
   "createdAt" timestamptz DEFAULT now(),
   "updatedAt" timestamptz DEFAULT now()
 );
