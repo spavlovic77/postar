@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { startAuthentication } from "@simplewebauthn/browser"
 import { Fingerprint } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 type LoginStep = "credentials" | "mfa"
 
@@ -39,26 +40,34 @@ export default function LoginPage() {
     setServerError(null)
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+      // Use Supabase client directly for authentication (sets cookies properly)
+      const supabase = createClient()
+      
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
       })
 
-      const result = await res.json()
-
-      if (!res.ok) {
-        if (res.status === 429) {
-          setServerError("Príliš veľa pokusov. Skúste to neskôr.")
-        } else {
-          setServerError(result.error || "Nesprávny e-mail alebo heslo")
-        }
+      if (authError || !authData.user) {
+        setServerError(authError?.message || "Nesprávny e-mail alebo heslo")
         return
       }
 
-      // Check if MFA is required
-      if (result.mfaRequired) {
-        setMfaData(result)
+      // Check if user has MFA enabled via API
+      const res = await fetch("/api/auth/check-mfa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: authData.user.id }),
+      })
+
+      const mfaResult = await res.json()
+
+      if (mfaResult.mfaRequired) {
+        setMfaData({
+          mfaRequired: true,
+          mfaToken: mfaResult.mfaToken,
+          challenge: mfaResult.challenge,
+        })
         setStep("mfa")
         return
       }
