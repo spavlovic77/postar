@@ -94,13 +94,15 @@ export interface AuditLog {
   userId: string
   companyId: string | null
   action: string
-  outcome: "success" | "failure"
+  outcome: "success" | "failure" | "pending"
   sourceIp: string
   userAgent: string
   requestMethod: string
   requestPath: string
   responseStatus: number
   correlationId: string
+  signatureId: string | null
+  severity: number | null
   details: Record<string, unknown> | null
 }
 

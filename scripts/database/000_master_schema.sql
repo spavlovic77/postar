@@ -101,6 +101,19 @@ CREATE TABLE IF NOT EXISTS public."userRoles" (
   UNIQUE("userId")
 );
 
+-- Access Point Providers Table (SAPI SK integration)
+-- Must be created before companies (FK dependency).
+CREATE TABLE IF NOT EXISTS public."accessPointProviders" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  "baseUrl" text NOT NULL,
+  "clientId" text NOT NULL,
+  "clientSecret" text NOT NULL,
+  "isActive" boolean DEFAULT true,
+  "createdAt" timestamptz DEFAULT now(),
+  "updatedAt" timestamptz DEFAULT now()
+);
+
 -- Companies Table
 CREATE TABLE IF NOT EXISTS public.companies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -195,18 +208,6 @@ CREATE TABLE IF NOT EXISTS public.documents (
   "updatedAt" timestamptz DEFAULT now()
 );
 
--- Access Point Providers Table (SAPI SK integration)
-CREATE TABLE IF NOT EXISTS public."accessPointProviders" (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  "baseUrl" text NOT NULL,
-  "clientId" text NOT NULL,
-  "clientSecret" text NOT NULL,
-  "isActive" boolean DEFAULT true,
-  "createdAt" timestamptz DEFAULT now(),
-  "updatedAt" timestamptz DEFAULT now()
-);
-
 -- Account Deactivation Requests Table
 CREATE TABLE IF NOT EXISTS public."accountDeactivationRequests" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -231,6 +232,8 @@ CREATE TABLE IF NOT EXISTS public."auditLogs" (
   "requestPath" text,
   "responseStatus" integer,
   "correlationId" text,
+  "signatureId" text,
+  severity integer,
   details jsonb,
   timestamp timestamptz DEFAULT now()
 );
@@ -264,6 +267,9 @@ CREATE INDEX IF NOT EXISTS idx_documents_company ON public.documents("companyId"
 -- Audit Logs
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON public."auditLogs"("userId");
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON public."auditLogs"(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_company ON public."auditLogs"("companyId");
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON public."auditLogs"(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation ON public."auditLogs"("correlationId");
 
 -- ============================================================================
 -- PART 5: ENABLE ROW LEVEL SECURITY
