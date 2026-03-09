@@ -32,6 +32,7 @@ const superAdminNav: NavItem[] = [
   { name: "Prehlad", href: "/admin", icon: LayoutDashboard },
   { name: "Spolocnosti", href: "/admin/companies", icon: Building2 },
   { name: "Pouzivatelia", href: "/admin/users", icon: Users },
+  { name: "Pozvanky", href: "/admin/invitations", icon: Mail },
   { name: "Deaktivacie", href: "/admin/deactivation-requests", icon: ShieldAlert },
   { name: "Pristupove body", href: "/admin/accessPoints", icon: Server },
   { name: "Audit log", href: "/admin/auditLogs", icon: ScrollText },
@@ -43,6 +44,7 @@ const administratorNav: NavItem[] = [
   { name: "Moja spolocnost", href: "/dashboard/company", icon: Building2 },
   { name: "Uctovnici", href: "/dashboard/accountants", icon: Users },
   { name: "Pozvat uctovnika", href: "/dashboard/invite", icon: Mail },
+  { name: "Pozvanky", href: "/dashboard/invitations", icon: Mail },
   { name: "Dokumenty", href: "/documents", icon: FileText },
   { name: "Nastavenia", href: "/settings", icon: Settings },
 ]

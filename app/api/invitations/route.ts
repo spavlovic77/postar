@@ -6,9 +6,10 @@ import { getUserRole, canInviteRole, canAssignCompanies } from "@/lib/auth/permi
 import type { UserRole } from "@/types"
 import crypto from "crypto"
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const adminClient = createAdminClient()
+  const { searchParams } = new URL(request.url)
 
   const {
     data: { user },
@@ -23,14 +24,56 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // SuperAdmin sees all invitations, Administrator sees only their own
+  // Filter options
+  const filterStatus = searchParams.get("status") // pending, accepted, expired, cancelled, all
+  const filterScope = searchParams.get("scope") // own, all (only for superAdmin/admin with company access)
+
+  // Build query
   let query = adminClient
     .from("invitations")
     .select("*")
     .order("createdAt", { ascending: false })
 
+  // Status filter
+  if (filterStatus && filterStatus !== "all") {
+    query = query.eq("status", filterStatus)
+  }
+
+  // Scope filter for administrators
   if (actorRoleData.role === "administrator") {
-    query = query.eq("invitedBy", user.id)
+    if (filterScope === "all") {
+      // Get companies the admin has access to
+      const { data: adminCompanies } = await adminClient
+        .from("companyAssignments")
+        .select("companyId")
+        .eq("userId", user.id)
+
+      const companyIds = adminCompanies?.map(c => c.companyId) || []
+      
+      // Get invitations for those companies OR invitations they created
+      // Using containedBy for array overlap
+      const { data: allInvitations } = await adminClient
+        .from("invitations")
+        .select("*")
+        .order("createdAt", { ascending: false })
+
+      // Filter client-side for array overlap
+      const filtered = allInvitations?.filter(inv => {
+        const invCompanyIds = inv.companyIds || []
+        return inv.invitedBy === user.id || 
+          invCompanyIds.some((id: string) => companyIds.includes(id))
+      }) || []
+
+      // Apply status filter if needed
+      const statusFiltered = filterStatus && filterStatus !== "all" 
+        ? filtered.filter(inv => inv.status === filterStatus)
+        : filtered
+
+      return NextResponse.json({ data: statusFiltered })
+    } else {
+      // Default: only own invitations
+      query = query.eq("invitedBy", user.id)
+    }
   }
 
   const { data, error } = await query
