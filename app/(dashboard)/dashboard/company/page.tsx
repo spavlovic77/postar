@@ -21,7 +21,7 @@ export default function AdminCompanyPage() {
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<Company | null>(null)
-  const [editName, setEditName] = useState("")
+  const [editLegalName, setEditLegalName] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   const fetchCompanies = useCallback(async () => {
@@ -37,7 +37,7 @@ export default function AdminCompanyPage() {
 
   function openEdit(company: Company) {
     setEditing(company)
-    setEditName(company.name)
+    setEditLegalName(company.legalName || "")
     setEditOpen(true)
   }
 
@@ -48,7 +48,7 @@ export default function AdminCompanyPage() {
     await fetch(`/api/admin/companies/${editing.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName }),
+      body: JSON.stringify({ legalName: editLegalName }),
     })
     setEditOpen(false)
     setSubmitting(false)
@@ -76,14 +76,9 @@ export default function AdminCompanyPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-semibold text-foreground">
-                    {company.name}
+                    {company.legalName || company.dic}
                   </h3>
-                  <p className="text-sm text-muted-foreground">{company.dic}</p>
-                  {company.legalName && (
-                    <p className="text-sm text-muted-foreground">
-                      {company.legalName}
-                    </p>
-                  )}
+                  <p className="text-sm text-muted-foreground">DIC: {company.dic}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant={company.isActive ? "success" : "secondary"}>
@@ -116,11 +111,11 @@ export default function AdminCompanyPage() {
           </DialogHeader>
           <form onSubmit={handleEdit} className="space-y-4">
             <div>
-              <Label htmlFor="editName">Zobrazovany nazov</Label>
+              <Label htmlFor="editLegalName">Obchodne meno</Label>
               <Input
-                id="editName"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
+                id="editLegalName"
+                value={editLegalName}
+                onChange={(e) => setEditLegalName(e.target.value)}
                 required
               />
             </div>
