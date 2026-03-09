@@ -49,6 +49,10 @@ export class IonApClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
+    console.log("[v0] ION AP Request:", options.method || "GET", url)
+    if (options.body) {
+      console.log("[v0] ION AP Request body:", options.body)
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -59,10 +63,13 @@ export class IonApClient {
       },
     })
 
+    console.log("[v0] ION AP Response status:", response.status)
+
     if (!response.ok) {
       let errorBody: IonApError = {}
       try {
         errorBody = await response.json()
+        console.error("[v0] ION AP Error response:", JSON.stringify(errorBody))
       } catch {
         // ignore parse errors
       }
@@ -73,7 +80,9 @@ export class IonApClient {
       )
     }
 
-    return response.json() as Promise<T>
+    const data = await response.json() as T
+    console.log("[v0] ION AP Response body:", JSON.stringify(data))
+    return data
   }
 
   /**
