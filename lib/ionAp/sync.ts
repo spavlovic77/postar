@@ -2,13 +2,13 @@
  * ION AP Sync - registers a company on ION AP and updates the DB record.
  *
  * Used by:
- * - PFS webhook (automatic on company creation)
- * - Admin retry button (manual re-run)
+ * - Document send flow (lazy activation on first send)
+ * - Document receive flow (lazy activation on first receive)
+ * - Admin manual activation button
  */
 
 import { IonApClient, IonApApiError } from "./client"
 import { createAdminClient } from "@/lib/supabase/server"
-import { lookupByDic } from "@/lib/ruz/lookup"
 
 export interface SyncResult {
   success: boolean
@@ -20,6 +20,8 @@ export interface SyncResult {
 /**
  * Register a company on ION AP and persist the result.
  * Safe to call multiple times — skips if already successful.
+ * 
+ * On success, also activates the company (status = 'active', isActive = true)
  */
 export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult> {
   console.log("[v0] ========== ION AP SYNC START ==========")
@@ -50,30 +52,16 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
     return { success: true, orgId: company.ionApOrgId }
   }
 
-  try {
-    // Look up real company name from RUZ if not already set
-    let companyName = company.legalName || "Company"
-    console.log("[v0] Initial company name:", companyName)
-    
-    try {
-      console.log("[v0] Looking up company in RUZ by DIC:", company.dic)
-      const ruzData = await lookupByDic(company.dic)
-      console.log("[v0] RUZ lookup result:", JSON.stringify(ruzData, null, 2))
-      
-      if (ruzData?.companyName) {
-        companyName = ruzData.companyName
-        console.log("[v0] Updating company legalName to:", companyName)
-        // Persist the legal name to DB
-        const { error: updateError } = await supabase
-          .from("companies")
-          .update({ legalName: companyName })
-          .eq("id", companyId)
-        console.log("[v0] legalName update result:", { error: updateError?.message })
-      }
-    } catch (ruzErr) {
-      console.error("[v0] RUZ lookup failed, using fallback name:", ruzErr)
-    }
+  // Company name comes from webhook (legal_name) - must be set
+  const companyName = company.legalName
+  if (!companyName) {
+    console.error("[v0] Company has no legal name set")
+    return { success: false, error: "Company legal name is required for ION AP registration" }
+  }
 
+  console.log("[v0] Company name for ION AP:", companyName)
+
+  try {
     console.log("[v0] Creating ION AP client...")
     console.log("[v0] ION_AP_URL configured:", !!process.env.ION_AP_URL)
     console.log("[v0] ION_AP_TOKEN configured:", !!process.env.ION_AP_TOKEN)
@@ -92,8 +80,8 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
     const result = await client.registerCompany(registerParams)
     console.log("[v0] ION AP registration result:", JSON.stringify(result, null, 2))
 
-    // Update company with ION AP data
-    console.log("[v0] Updating company with ION AP data...")
+    // Update company with ION AP data and activate
+    console.log("[v0] Updating company with ION AP data and activating...")
     const { error: successUpdateError } = await supabase
       .from("companies")
       .update({
@@ -101,6 +89,8 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
         ionApIdentifierId: result.identifierId,
         ionApStatus: "success",
         ionApError: null,
+        status: "active",
+        isActive: true,
         updatedAt: new Date().toISOString(),
       })
       .eq("id", companyId)
@@ -133,5 +123,50 @@ export async function syncCompanyToIonAp(companyId: string): Promise<SyncResult>
     console.log("[v0] Failure update result:", { error: failUpdateError?.message })
     console.log("[v0] ========== ION AP SYNC FAILED ==========")
     return { success: false, error: errorMessage }
+  }
+}
+
+/**
+ * Ensures a company is registered on ION AP before document operations.
+ * Used for lazy activation on first document send/receive.
+ * 
+ * Returns the company if activation succeeds, throws if it fails.
+ */
+export async function ensureCompanyActivated(companyId: string): Promise<{
+  ionApOrgId: number
+  ionApIdentifierId: number
+}> {
+  const supabase = createAdminClient()
+  
+  // Check current status
+  const { data: company, error } = await supabase
+    .from("companies")
+    .select("ionApOrgId, ionApIdentifierId, ionApStatus")
+    .eq("id", companyId)
+    .single()
+
+  if (error || !company) {
+    throw new Error("Company not found")
+  }
+
+  // Already activated
+  if (company.ionApStatus === "success" && company.ionApOrgId && company.ionApIdentifierId) {
+    return {
+      ionApOrgId: company.ionApOrgId,
+      ionApIdentifierId: company.ionApIdentifierId,
+    }
+  }
+
+  // Need to activate
+  console.log("[v0] Company not activated on ION AP, triggering lazy activation...")
+  const result = await syncCompanyToIonAp(companyId)
+  
+  if (!result.success || !result.orgId || !result.identifierId) {
+    throw new Error(`ION AP activation failed: ${result.error || "Unknown error"}`)
+  }
+
+  return {
+    ionApOrgId: result.orgId,
+    ionApIdentifierId: result.identifierId,
   }
 }

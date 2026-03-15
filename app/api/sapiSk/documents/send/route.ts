@@ -6,6 +6,7 @@ import { sendDocumentSchema } from "@/lib/validations/document"
 import { logAuditEvent } from "@/lib/sapiSk/auditLog"
 import { ratelimit } from "@/lib/rateLimit"
 import { validateCSRFTokenSimple } from "@/lib/csrf"
+import { ensureCompanyActivated } from "@/lib/ionAp/sync"
 import {
   PEPPOL_DOCUMENT_TYPES,
   PEPPOL_PROCESS_ID,
@@ -81,6 +82,38 @@ export async function POST(request: Request) {
     if (!company?.accessPointProvider) {
       return NextResponse.json(
         { error: "No Access Point configured for this company" },
+        { status: 400 }
+      )
+    }
+
+    // Lazy activation: Ensure company is registered on ION AP before sending
+    try {
+      await ensureCompanyActivated(companyId)
+      console.log("[v0] Company activated on ION AP, proceeding with document send")
+    } catch (activationError) {
+      console.error("[v0] ION AP activation failed:", activationError)
+      await logAuditEvent({
+        userId: user.id,
+        companyId,
+        action: "document.send",
+        outcome: "failure",
+        sourceIp: ip,
+        userAgent,
+        requestMethod: "POST",
+        requestPath: "/api/sapiSk/documents/send",
+        responseStatus: 400,
+        correlationId,
+        details: {
+          error: "ION AP activation failed",
+          message: activationError instanceof Error ? activationError.message : "Unknown error",
+        },
+      })
+      return NextResponse.json(
+        { 
+          error: "Company not activated on ION AP", 
+          details: activationError instanceof Error ? activationError.message : "Unknown error",
+          correlationId,
+        },
         { status: 400 }
       )
     }

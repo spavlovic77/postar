@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, Plus, Pencil, Trash2, Search, CheckCircle, RefreshCw, Cloud, CloudOff, Loader2 } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, Search, CheckCircle, RefreshCw, Cloud, CloudOff, Loader2, Mail, MailX, MailCheck, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,6 +45,8 @@ export default function AdminCompaniesPage() {
   const [deleting, setDeleting] = useState<Company | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [retryingInviteId, setRetryingInviteId] = useState<string | null>(null)
+  const [activatingIonApId, setActivatingIonApId] = useState<string | null>(null)
   const [form, setForm] = useState({
     dic: "",
     legalName: "",
@@ -180,6 +182,106 @@ export default function AdminCompaniesPage() {
     }
   }
 
+  async function handleRetryInvitation(company: Company) {
+    setRetryingInviteId(company.id)
+    try {
+      const res = await fetch(`/api/admin/companies/${company.id}/retry-invitation`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        fetchCompanies()
+      }
+    } finally {
+      setRetryingInviteId(null)
+    }
+  }
+
+  async function handleActivateIonAp(company: Company) {
+    setActivatingIonApId(company.id)
+    try {
+      const res = await fetch(`/api/admin/companies/${company.id}/activate-ionap`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        fetchCompanies()
+      }
+    } finally {
+      setActivatingIonApId(null)
+    }
+  }
+
+  function getInvitationBadge(company: Company) {
+    const status = company.invitationStatus
+    const error = company.invitationError
+    
+    switch (status) {
+      case "sent":
+        return (
+          <Badge variant="default" className="bg-blue-50 text-blue-700 border-blue-200 gap-1">
+            <MailCheck size={12} />
+            Odoslana
+          </Badge>
+        )
+      case "accepted":
+        return (
+          <Badge variant="default" className="bg-green-50 text-green-700 border-green-200 gap-1">
+            <MailCheck size={12} />
+            Prijata
+          </Badge>
+        )
+      case "failed":
+        return (
+          <div className="flex items-center gap-1">
+            <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200 gap-1">
+              <MailX size={12} />
+              Zlyhala
+            </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title={error || "Skusit znova odoslat pozvanie"}
+              onClick={() => handleRetryInvitation(company)}
+              disabled={retryingInviteId === company.id}
+            >
+              {retryingInviteId === company.id ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Send size={12} />
+              )}
+            </Button>
+          </div>
+        )
+      case "pending":
+        return (
+          <Badge variant="outline" className="text-muted-foreground gap-1">
+            <Loader2 size={12} />
+            Odosiela sa
+          </Badge>
+        )
+      case "none":
+      default:
+        return company.adminEmail ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => handleRetryInvitation(company)}
+            disabled={retryingInviteId === company.id}
+          >
+            {retryingInviteId === company.id ? (
+              <Loader2 size={12} className="animate-spin mr-1" />
+            ) : (
+              <Mail size={12} className="mr-1" />
+            )}
+            Poslat
+          </Button>
+        ) : (
+          <span className="text-muted-foreground text-xs">Chyba email</span>
+        )
+    }
+  }
+
   function getIonApBadge(company: Company) {
     if (company.ionApStatus === "success") {
       return (
@@ -213,12 +315,28 @@ export default function AdminCompaniesPage() {
         </div>
       )
     }
-    // pending or null
+    // pending or null - show manual activation button
     return (
-      <Badge variant="outline" className="text-muted-foreground gap-1">
-        <Loader2 size={12} />
-        Caka
-      </Badge>
+      <div className="flex items-center gap-1">
+        <Badge variant="outline" className="text-muted-foreground gap-1">
+          <Loader2 size={12} />
+          Caka
+        </Badge>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Manualne aktivovat na ION AP"
+          onClick={() => handleActivateIonAp(company)}
+          disabled={activatingIonApId === company.id}
+        >
+          {activatingIonApId === company.id ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Cloud size={12} />
+          )}
+        </Button>
+      </div>
     )
   }
 
@@ -291,10 +409,10 @@ export default function AdminCompaniesPage() {
                 <TableHead>DIC</TableHead>
                 <TableHead>Obchodne meno</TableHead>
                 <TableHead>Admin e-mail</TableHead>
-                <TableHead>PFS Token</TableHead>
+                <TableHead>Pozvanie</TableHead>
                 <TableHead>ION AP</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-[140px]">Akcie</TableHead>
+                <TableHead className="w-[160px]">Akcie</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -304,11 +422,7 @@ export default function AdminCompaniesPage() {
                   <TableCell>{company.legalName || <span className="text-muted-foreground italic">Nevyplnene</span>}</TableCell>
                   <TableCell>{company.adminEmail || "—"}</TableCell>
                   <TableCell>
-                    {company.pfsVerificationToken ? (
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {company.pfsVerificationToken.substring(0, 12)}...
-                      </span>
-                    ) : "—"}
+                    {getInvitationBadge(company)}
                   </TableCell>
                   <TableCell>
                     {getIonApBadge(company)}
