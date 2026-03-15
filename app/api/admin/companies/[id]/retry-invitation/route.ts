@@ -28,8 +28,8 @@ export async function POST(
     }
 
     // Check if user is superAdmin
-    const roleData = await getUserRole(user.id)
-    if (roleData.role !== "superAdmin") {
+    const roleData = await getUserRole(supabase, user.id)
+    if (!roleData || roleData.role !== "superAdmin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
